@@ -1,0 +1,107 @@
+/* Dark Mode Overrides - will be loaded last to ensure black backgrounds */
+
+/* Global background overrides */
+html,
+body,
+#__next,
+main,
+div,
+section,
+header,
+footer,
+nav,
+aside {
+  background-color: #000000 !important;
+}
+
+/* Class-based overrides */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-gray-200,
+[class*="bg-gray-"],
+[class*="bg-slate-"],
+[class*="bg-zinc-"],
+[class*="bg-neutral-"] {
+  background-color: #000000 !important;
+}
+
+/* Container elements */
+.container,
+.wrapper,
+.content,
+.panel,
+.card,
+.rounded,
+.shadow,
+.shadow-sm,
+.shadow-md,
+.shadow-lg {
+  background-color: #222222 !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+/* Table elements */
+table,
+thead,
+tbody,
+tr,
+th,
+td {
+  background-color: #222222 !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+/* Header elements */
+thead,
+th {
+  background-color: #333333 !important;
+}
+
+/* Button styling */
+button:not(.bg-blue-600):not(.bg-indigo-600):not(.bg-red-600):not(.bg-green-600),
+.button:not(.bg-blue-600):not(.bg-indigo-600):not(.bg-red-600):not(.bg-green-600) {
+  background-color: #333333 !important;
+  color: #ffffff !important;
+  border-color: #444444 !important;
+}
+
+/* Make sure text is visible */
+* {
+  color-scheme: dark;
+}
+
+/* Fix status indicators */
+.bg-red-100 {
+  background-color: #471818 !important;
+}
+
+.bg-blue-100 {
+  background-color: #172447 !important;
+}
+
+.bg-green-100 {
+  background-color: #1a472a !important;
+}
+
+.bg-yellow-100 {
+  background-color: #473e17 !important;
+}
+
+/* Fix all text colors */
+[class*="text-gray-"],
+[class*="text-slate-"],
+[class*="text-zinc-"],
+[class*="text-neutral-"] {
+  color: #ffffff !important;
+}
+
+/* Hover states */
+*:hover[class*="hover:bg-gray-"],
+*:hover[class*="hover:bg-slate-"],
+*:hover[class*="hover:bg-zinc-"],
+*:hover[class*="hover:bg-neutral-"] {
+  background-color: #333333 !important;
+}

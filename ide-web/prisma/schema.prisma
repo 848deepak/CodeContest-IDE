@@ -1,0 +1,134 @@
+// Prisma schema for coding contest platform
+// Uses PostgreSQL as the provider
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contest {
+  id         String     @id @default(uuid())
+  title      String
+  startTime  DateTime
+  endTime    DateTime
+  questions  Question[]
+  submissions Submission[]
+  discussions Discussion[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+model Question {
+  id            String     @id @default(uuid())
+  contestId     String
+  contest       Contest    @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  title         String
+  description   String
+  inputFormat   String
+  outputFormat  String
+  constraints   String
+  sampleInput   String
+  sampleOutput  String
+  points        Int
+  testCases     TestCase[]
+  submissions   Submission[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model TestCase {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  input      String
+  output     String
+  isHidden   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model User {
+  id          String       @id @default(uuid())
+  username    String       @unique
+  email       String       @unique
+  name        String
+  submissions Submission[]
+  discussions Discussion[]
+  comments    Comment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Submission {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  contestId   String
+  contest     Contest  @relation(fields: [contestId], references: [id])
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id])
+  code        String
+  language    String
+  status      String   // PENDING, ACCEPTED, WRONG_ANSWER, TIME_LIMIT_EXCEEDED, etc.
+  score       Int      @default(0)
+  totalTests  Int      @default(0)
+  passedTests Int      @default(0)
+  runtime     Float?
+  memory      Float?
+  submittedAt DateTime @default(now())
+  
+  @@index([contestId, userId])
+  @@index([questionId, userId])
+}
+
+model Leaderboard {
+  id        String   @id @default(uuid())
+  contestId String
+  userId    String
+  username  String
+  totalScore Int     @default(0)
+  lastSubmissionTime DateTime?
+  rank      Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([contestId, userId])
+  @@index([contestId, totalScore, lastSubmissionTime])
+}
+
+model Discussion {
+  id        String    @id @default(uuid())
+  contestId String
+  contest   Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  title     String
+  content   String
+  isSticky  Boolean   @default(false)
+  isLocked  Boolean   @default(false)
+  comments  Comment[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  
+  @@index([contestId, createdAt])
+}
+
+model Comment {
+  id           String     @id @default(uuid())
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  content      String
+  parentId     String?
+  parent       Comment?   @relation("CommentReplies", fields: [parentId], references: [id])
+  replies      Comment[]  @relation("CommentReplies")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  
+  @@index([discussionId, createdAt])
+} 
