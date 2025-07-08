@@ -18,6 +18,11 @@ model Contest {
   questions  Question[]
   submissions Submission[]
   discussions Discussion[]
+  // Security settings
+  requireFullScreen Boolean @default(true)
+  disableCopyPaste  Boolean @default(true)
+  preventTabSwitching Boolean @default(true)
+  requireWebcamMonitoring Boolean @default(false)
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 }
@@ -131,4 +136,17 @@ model Comment {
   updatedAt    DateTime   @updatedAt
   
   @@index([discussionId, createdAt])
-} 
+}
+
+model SecurityViolation {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  contestId      String   @map("contest_id")
+  violationType  String   @map("violation_type") // navigation, tab_switching, copy_paste, webcam, face_position
+  details        String?
+  screenshotUrl  String?  @map("screenshot_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  
+  @@index([contestId, userId])
+  @@map("security_violations")
+}

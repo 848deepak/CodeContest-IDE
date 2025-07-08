@@ -29,6 +29,17 @@ export async function GET(
       }
     });
     
+    // Add default security settings if not present in the database
+    if (contest) {
+      return NextResponse.json({
+        ...contest,
+        requireFullScreen: contest.requireFullScreen ?? true,
+        disableCopyPaste: contest.disableCopyPaste ?? true,
+        preventTabSwitching: contest.preventTabSwitching ?? true,
+        requireWebcamMonitoring: contest.requireWebcamMonitoring ?? false
+      });
+    }
+    
     if (!contest) {
       return NextResponse.json({ error: 'Contest not found' }, { status: 404 });
     }

@@ -217,6 +217,15 @@ export async function POST(req: NextRequest) {
         passedTests,
         runtime: totalRuntime / totalTests || 0,
         memory: totalMemory / totalTests || 0,
+        user: {
+          connect: { id: user.id }
+        },
+        contest: {
+          connect: { id: contestId }
+        },
+        question: {
+          connect: { id: questionId }
+        }
       }
     });
 

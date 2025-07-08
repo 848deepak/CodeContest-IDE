@@ -1,11 +1,25 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+// Dynamically import SolutionValidator to avoid SSR issues with Monaco editor
+const SolutionValidator = dynamic(
+  () => import("@/components/SolutionValidator"),
+  { ssr: false }
+);
 
 interface TestCase {
   input: string;
   output: string;
   isHidden: boolean;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  passedTests: number;
+  totalTests: number;
+  results: any[];
 }
 
 export default function AddQuestionPage({ 
@@ -25,9 +39,13 @@ export default function AddQuestionPage({
     { input: "", output: "", isHidden: true }
   ]);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [contestId, setContestId] = useState<string>("");
+  const [showValidator, setShowValidator] = useState(false);
+  const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
+  const [validationComplete, setValidationComplete] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -40,11 +58,17 @@ export default function AddQuestionPage({
 
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", output: "", isHidden: true }]);
+    // Reset validation when test cases change
+    setValidationComplete(false);
+    setValidationResults(null);
   };
 
   const removeTestCase = (index: number) => {
     if (testCases.length > 1) {
       setTestCases(testCases.filter((_, i) => i !== index));
+      // Reset validation when test cases change
+      setValidationComplete(false);
+      setValidationResults(null);
     }
   };
 
@@ -52,23 +76,67 @@ export default function AddQuestionPage({
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
+    // Reset validation when test cases change
+    setValidationComplete(false);
+    setValidationResults(null);
+  };
+
+  const validateFields = () => {
+    const errors: Record<string, string> = {};
+    
+    if (!title.trim()) {
+      errors.title = "Title is required";
+    }
+    
+    if (!description.trim()) {
+      errors.description = "Problem description is required";
+    }
+    
+    if (!inputFormat.trim()) {
+      errors.inputFormat = "Input format is required";
+    }
+    
+    if (!outputFormat.trim()) {
+      errors.outputFormat = "Output format is required";
+    }
+    
+    if (!constraints.trim()) {
+      errors.constraints = "Constraints are required";
+    }
+    
+    if (!sampleInput.trim()) {
+      errors.sampleInput = "Sample input is required";
+    }
+    
+    if (!sampleOutput.trim()) {
+      errors.sampleOutput = "Sample output is required";
+    }
+    
+    const validTestCases = testCases.filter(tc => tc.input.trim() && tc.output.trim());
+    if (validTestCases.length === 0) {
+      errors.testCases = "At least one valid test case is required";
+    }
+    
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleValidationComplete = (results: ValidationResult) => {
+    setValidationResults(results);
+    setValidationComplete(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contestId) return;
     
-    // Validation
-    if (!title.trim() || !description.trim()) {
-      setError("Title and description are required");
+    // Comprehensive validation
+    if (!validateFields()) {
+      setError("Please fix all required fields marked in red");
       return;
     }
-
-    if (!sampleInput.trim() || !sampleOutput.trim()) {
-      setError("Sample input and output are required");
-      return;
-    }
-
+    
+    // Ensure test cases are valid
     const validTestCases = testCases.filter(tc => tc.input.trim() && tc.output.trim());
     if (validTestCases.length === 0) {
       setError("At least one test case is required");
@@ -142,14 +210,16 @@ export default function AddQuestionPage({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Question Title *
+                  {fieldErrors.title && (
+                    <span className="text-red-600 ml-1">{fieldErrors.title}</span>
+                  )}
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full p-3 border ${fieldErrors.title ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                   placeholder="e.g., Two Sum"
-                  required
                 />
               </div>
 
@@ -172,14 +242,16 @@ export default function AddQuestionPage({
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Problem Description *
+                {fieldErrors.description && (
+                  <span className="text-red-600 ml-1">{fieldErrors.description}</span>
+                )}
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={6}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full p-3 border ${fieldErrors.description ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                 placeholder="Describe the problem in detail..."
-                required
               />
             </div>
 
@@ -187,26 +259,32 @@ export default function AddQuestionPage({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Input Format
+                  Input Format *
+                  {fieldErrors.inputFormat && (
+                    <span className="text-red-600 ml-1">{fieldErrors.inputFormat}</span>
+                  )}
                 </label>
                 <textarea
                   value={inputFormat}
                   onChange={(e) => setInputFormat(e.target.value)}
                   rows={3}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full p-3 border ${fieldErrors.inputFormat ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                   placeholder="Describe the input format..."
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Output Format
+                  Output Format *
+                  {fieldErrors.outputFormat && (
+                    <span className="text-red-600 ml-1">{fieldErrors.outputFormat}</span>
+                  )}
                 </label>
                 <textarea
                   value={outputFormat}
                   onChange={(e) => setOutputFormat(e.target.value)}
                   rows={3}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={`w-full p-3 border ${fieldErrors.outputFormat ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                   placeholder="Describe the output format..."
                 />
               </div>
@@ -215,13 +293,16 @@ export default function AddQuestionPage({
             {/* Constraints */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Constraints
+                Constraints *
+                {fieldErrors.constraints && (
+                  <span className="text-red-600 ml-1">{fieldErrors.constraints}</span>
+                )}
               </label>
               <textarea
                 value={constraints}
                 onChange={(e) => setConstraints(e.target.value)}
                 rows={3}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full p-3 border ${fieldErrors.constraints ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                 placeholder="e.g., 1 ≤ n ≤ 10^5, -10^9 ≤ arr[i] ≤ 10^9"
               />
             </div>
@@ -231,36 +312,45 @@ export default function AddQuestionPage({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Sample Input *
+                  {fieldErrors.sampleInput && (
+                    <span className="text-red-600 ml-1">{fieldErrors.sampleInput}</span>
+                  )}
                 </label>
                 <textarea
                   value={sampleInput}
                   onChange={(e) => setSampleInput(e.target.value)}
                   rows={4}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  className={`w-full p-3 border ${fieldErrors.sampleInput ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm`}
                   placeholder="Enter sample input..."
-                  required
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Sample Output *
+                  {fieldErrors.sampleOutput && (
+                    <span className="text-red-600 ml-1">{fieldErrors.sampleOutput}</span>
+                  )}
                 </label>
                 <textarea
                   value={sampleOutput}
                   onChange={(e) => setSampleOutput(e.target.value)}
                   rows={4}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  className={`w-full p-3 border ${fieldErrors.sampleOutput ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm`}
                   placeholder="Enter expected output..."
-                  required
                 />
               </div>
             </div>
 
             {/* Test Cases */}
-            <div>
+            <div className={fieldErrors.testCases ? 'border border-red-500 rounded-lg p-4' : ''}>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-gray-900">Test Cases</h3>
+                <h3 className="text-lg font-medium text-gray-900">
+                  Test Cases *
+                  {fieldErrors.testCases && (
+                    <span className="text-red-600 ml-1 text-sm">{fieldErrors.testCases}</span>
+                  )}
+                </h3>
                 <button
                   type="button"
                   onClick={addTestCase}
@@ -289,7 +379,7 @@ export default function AddQuestionPage({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                       <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">
-                          Input
+                          Input *
                         </label>
                         <textarea
                           value={testCase.input}
@@ -302,7 +392,7 @@ export default function AddQuestionPage({
 
                       <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">
-                          Expected Output
+                          Expected Output *
                         </label>
                         <textarea
                           value={testCase.output}
@@ -329,6 +419,39 @@ export default function AddQuestionPage({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Solution Validator */}
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Validate Solution</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowValidator(!showValidator)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                >
+                  {showValidator ? "Hide Validator" : "Show Validator"}
+                </button>
+              </div>
+              
+              {showValidator && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <SolutionValidator 
+                    testCases={testCases.filter(tc => tc.input.trim() && tc.output.trim())} 
+                    onValidationComplete={handleValidationComplete}
+                  />
+                </div>
+              )}
+
+              {validationComplete && validationResults && (
+                <div className={`mt-4 p-4 rounded-lg ${validationResults.valid ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+                  <h4 className="font-medium">
+                    {validationResults.valid 
+                      ? "All tests passed! Your solution works correctly." 
+                      : `${validationResults.passedTests}/${validationResults.totalTests} tests passed. Please fix your solution.`}
+                  </h4>
+                </div>
+              )}
             </div>
 
             {/* Error/Success Messages */}

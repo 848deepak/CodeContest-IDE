@@ -5,6 +5,23 @@ export async function GET() {
   try {
     const contests = await prisma.contest.findMany({
       orderBy: { startTime: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        startTime: true,
+        endTime: true,
+        requireFullScreen: true,
+        disableCopyPaste: true,
+        preventTabSwitching: true,
+        requireWebcamMonitoring: true,
+        questions: {
+          select: {
+            id: true,
+            title: true,
+            points: true,
+          }
+        }
+      }
     });
     return NextResponse.json(contests);
   } catch (error) {
@@ -16,7 +33,15 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
-    const { title, startTime, endTime } = data;
+    const { 
+      title, 
+      startTime, 
+      endTime, 
+      requireFullScreen = true, 
+      disableCopyPaste = true, 
+      preventTabSwitching = true,
+      requireWebcamMonitoring = false
+    } = data;
     
     if (!title || !startTime || !endTime) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -27,6 +52,10 @@ export async function POST(req: NextRequest) {
         title,
         startTime: new Date(startTime),
         endTime: new Date(endTime),
+        requireFullScreen,
+        disableCopyPaste,
+        preventTabSwitching,
+        requireWebcamMonitoring,
       },
     });
     
