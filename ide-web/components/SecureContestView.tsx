@@ -1,512 +1,439 @@
-'use client';
+"use client";
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Webcam from 'react-webcam';
+import Link from 'next/link';
 
-import { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import WebcamMonitor from './WebcamMonitor';
-
-interface SecureContestViewProps {
-  contestId: string;
-  requireFullScreen: boolean;
-  disableCopyPaste: boolean;
-  preventTabSwitching: boolean;
-  requireWebcamMonitoring?: boolean;
-  children: React.ReactNode;
-  onAllowEndRef?: React.MutableRefObject<(() => void) | undefined>;
+interface Question {
+  id: string;
+  title: string;
+  points: number;
 }
 
-export default function SecureContestView({
-  contestId,
-  requireFullScreen,
-  disableCopyPaste,
-  preventTabSwitching,
-  requireWebcamMonitoring = false,
-  children,
-  onAllowEndRef,
+interface Contest {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  questions: Question[];
+}
+
+interface Violation {
+  id: string;
+  type: 'TAB_SWITCH' | 'WINDOW_SWITCH' | 'FULLSCREEN_EXIT' | 'FACE_NOT_DETECTED' | 'MULTIPLE_FACES';
+  timestamp: string;
+  details: string;
+}
+
+interface SecureContestViewProps {
+  contest: Contest;
+  onViolation: (violation: Omit<Violation, 'id' | 'timestamp'>) => void;
+  onTimeUp?: () => void;
+}
+
+export default function SecureContestView({ 
+  contest, 
+  onViolation, 
+  onTimeUp 
 }: SecureContestViewProps) {
-  const router = useRouter();
-  const [isFullScreen, setIsFullScreen] = useState(false);
-  const [securityWarnings, setSecurityWarnings] = useState<string[]>([]);
-  const [securityViolations, setSecurityViolations] = useState(0);
-  const MAX_VIOLATIONS = 3;
-  const lastFocusTime = useRef<number>(Date.now());
-  const windowFocused = useRef<boolean>(true);
-  const focusCheckIntervalId = useRef<number | null>(null);
+  // State management
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState<string>("");
+  const [violations, setViolations] = useState<Violation[]>([]);
+  const [webcamEnabled, setWebcamEnabled] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(true);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [warningVisible, setWarningVisible] = useState(false);
+  const [contestStarted, setContestStarted] = useState(false);
 
-  // Record security violations
-  const recordViolation = (message: string) => {
-    setSecurityWarnings(prev => [...prev, message]);
-    setSecurityViolations(prev => {
-      const newCount = prev + 1;
-      if (newCount >= MAX_VIOLATIONS) {
-        // Log the user out or take other action after too many violations
-        router.push(`/contests/${contestId}/violation`);
-      }
-      return newCount;
-    });
-  };
+  // Refs
+  const webcamRef = useRef<Webcam>(null);
+  const lastViolationRef = useRef<number>(0);
 
-  // Request full screen
-  const requestFullScreen = async () => {
+  // Constants
+  const VIOLATION_COOLDOWN = 5000; // 5 seconds cooldown between similar violations
+
+  // Check if contest is active
+  const isContestActive = useCallback(() => {
+    const now = new Date();
+    const start = new Date(contest.startTime);
+    const end = new Date(contest.endTime);
+    return now >= start && now <= end;
+  }, [contest]);
+
+  // Calculate time remaining
+  const calculateTimeRemaining = useCallback(() => {
+    const now = new Date().getTime();
+    const end = new Date(contest.endTime).getTime();
+    const distance = end - now;
+
+    if (distance < 0) {
+      onTimeUp?.();
+      return "Contest Ended";
+    }
+
+    const hours = Math.floor(distance / (1000 * 60 * 60));
+    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, [contest.endTime, onTimeUp]);
+
+  // Log violation with cooldown
+  const logViolation = useCallback((type: Violation['type'], details: string) => {
+    const now = Date.now();
+    if (now - lastViolationRef.current < VIOLATION_COOLDOWN) {
+      return; // Skip if within cooldown period
+    }
+
+    const violation: Violation = {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      timestamp: new Date().toISOString(),
+      details
+    };
+
+    setViolations(prev => [...prev, violation]);
+    onViolation(violation);
+    lastViolationRef.current = now;
+
+    // Show warning
+    setWarningVisible(true);
+    setTimeout(() => setWarningVisible(false), 3000);
+  }, [onViolation]);
+
+  // Fullscreen management
+  const enterFullscreen = useCallback(async () => {
     try {
       await document.documentElement.requestFullscreen();
-      setIsFullScreen(true);
+      setIsFullscreen(true);
     } catch (error) {
-      console.error('Failed to enter full screen mode:', error);
-      setSecurityWarnings(prev => [...prev, 'Full screen mode is required for this contest. Please allow full screen.']);
+      console.error('Failed to enter fullscreen:', error);
     }
-  };
+  }, []);
 
-  // Handle window blur event
-  const handleWindowBlur = () => {
-    windowFocused.current = false;
-    lastFocusTime.current = Date.now();
-  };
-
-  // Handle window focus event
-  const handleWindowFocus = () => {
-    // If the window was previously unfocused, check how long it's been
-    if (!windowFocused.current) {
-      const timeSinceBlur = Date.now() - lastFocusTime.current;
-      if (timeSinceBlur > 1000) { // If more than 1 second, likely switched tabs
-        recordViolation('Tab switching detected. Please stay on this tab during the contest.');
-      }
+  const exitFullscreen = useCallback(async () => {
+    try {
+      await document.exitFullscreen();
+      setIsFullscreen(false);
+    } catch (error) {
+      console.error('Failed to exit fullscreen:', error);
     }
-    windowFocused.current = true;
-  };
+  }, []);
 
-  // Prevent navigation using back/forward buttons
-  const preventNavigation = (e: PopStateEvent) => {
-    // Push the current state back to history to prevent navigation
-    window.history.pushState(null, '', window.location.href);
-    recordViolation('Browser navigation (back/forward) is disabled during the contest.');
+  // Event handlers
+  const handleFullscreenChange = useCallback(() => {
+    const isCurrentlyFullscreen = Boolean(document.fullscreenElement);
+    setIsFullscreen(isCurrentlyFullscreen);
     
-    // Additionally display an alert to make it very clear to the user
-    setTimeout(() => {
-      alert('Back navigation is disabled during the contest');
-    }, 0);
-  };
-
-  // Handle tab switching
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'hidden') {
-      recordViolation('Tab switching detected. Please stay on this tab during the contest.');
-      lastFocusTime.current = Date.now();
+    if (!isCurrentlyFullscreen && contestStarted && isContestActive()) {
+      logViolation('FULLSCREEN_EXIT', 'User exited fullscreen mode during contest');
     }
-  };
+  }, [contestStarted, isContestActive, logViolation]);
 
-  // Prevent default actions
-  const preventDefaultAction = (e: Event) => {
-    e.preventDefault();
-    recordViolation('Copy/paste is disabled during this contest.');
-  };
-
-  // Prevent keyboard shortcuts for copy/paste
-  const preventCopyPasteShortcuts = (e: KeyboardEvent) => {
-    // Check for Ctrl+C, Ctrl+V, Ctrl+X
-    if (e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'x')) {
-      e.preventDefault();
-      recordViolation('Copy/paste keyboard shortcuts are disabled during this contest.');
-    }
+  const handleVisibilityChange = useCallback(() => {
+    const isVisible = !document.hidden;
+    setIsTabVisible(isVisible);
     
-    // Prevent navigation shortcuts
-    if (
-      (e.key === 'F5') || // Refresh
-      (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) || // Alt+Left/Right for browser navigation
-      (e.ctrlKey && e.key === 'r') || // Ctrl+R for refresh
-      (e.ctrlKey && e.key === 'l') || // Ctrl+L to focus address bar
-      (e.ctrlKey && e.key === '[') || // Ctrl+[ sometimes works as back in some browsers
-      (e.key === 'F11') || // F11 for fullscreen toggle
-      (e.key === 'Escape') || // Escape to exit fullscreen
-      (e.key === 'Backspace' && document.activeElement === document.body) // Backspace when no input is focused
-    ) {
-      e.preventDefault();
-      e.stopPropagation();
-      recordViolation('Navigation shortcuts are disabled during this contest.');
+    if (!isVisible && contestStarted && isContestActive()) {
+      logViolation('TAB_SWITCH', 'User switched to another tab during contest');
     }
-  };
+  }, [contestStarted, isContestActive, logViolation]);
 
-  // Handle full screen change
-  const handleFullScreenChange = () => {
-    const isCurrentlyFullScreen = !!document.fullscreenElement;
-    setIsFullScreen(isCurrentlyFullScreen);
-    
-    if (requireFullScreen && !isCurrentlyFullScreen) {
-      recordViolation('Full screen mode exited. Please return to full screen to continue.');
-      // Try to go back to full screen after a short delay
-      setTimeout(() => {
-        requestFullScreen();
-      }, 1000);
+  const handleWindowBlur = useCallback(() => {
+    if (contestStarted && isContestActive()) {
+      logViolation('WINDOW_SWITCH', 'User switched to another window during contest');
     }
-  };
+  }, [contestStarted, isContestActive, logViolation]);
 
-  // Create a shared variable to track if a submission/finish was explicitly allowed
-  // by the parent component (after confirmation dialog)
-  const allowEndNavigation = useRef(false);
+  // Start secure contest mode
+  const startSecureMode = useCallback(async () => {
+    try {
+      // Request webcam permission
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setWebcamEnabled(true);
+      stream.getTracks().forEach(track => track.stop()); // Stop initial stream
+      
+      // Enter fullscreen
+      await enterFullscreen();
+      
+      setContestStarted(true);
+    } catch (error) {
+      console.error('Failed to start secure mode:', error);
+      alert('Please enable webcam and allow fullscreen to start the contest');
+    }
+  }, [enterFullscreen]);
 
-  // Method to be exposed to parent component to allow end navigation
-  const setAllowEndNavigation = () => {
-    allowEndNavigation.current = true;
-  };
-
-  // Expose the setAllowEndNavigation method through the ref
+  // Effects
   useEffect(() => {
-    if (onAllowEndRef) {
-      onAllowEndRef.current = () => {
-        allowEndNavigation.current = true;
-      };
-    }
-    
-    return () => {
-      if (onAllowEndRef) {
-        onAllowEndRef.current = undefined;
+    // Timer update
+    const timer = setInterval(() => {
+      if (isContestActive()) {
+        setTimeRemaining(calculateTimeRemaining());
       }
-    };
-  }, [onAllowEndRef]);
+    }, 1000);
 
-  // Request full screen when component mounts
-  // Override router methods to prevent programmatic navigation
-  useEffect(() => {
-    const originalPush = router.push;
-    const originalBack = router.back;
-    const originalReplace = router.replace;
-    
-    // Override router methods
-    router.push = (href: string) => {
-      // Only allow navigation to problem pages within the same contest
-      if (href.includes(`/contests/${contestId}/problems/`)) {
-        return originalPush(href);
-      }
-      
-      // Allow submission or finish pages, but only when confirmed through the custom end dialog
-      // The parent component handles showing the dialog and collecting the "end" confirmation
-      if ((href.includes(`/contests/${contestId}/submit`) || href.includes(`/contests/${contestId}/finish`)) && 
-          allowEndNavigation.current) {
-        // This means the end dialog confirmed with "end" text
-        // Reset the flag immediately to prevent multiple navigations
-        allowEndNavigation.current = false;
-        return originalPush(href);
-      }
-      
-      // Block other navigation attempts
-      recordViolation('Navigation attempt detected and blocked');
-      return Promise.resolve(false);
-    };
-    
-    router.back = () => {
-      recordViolation('Back navigation attempt detected and blocked');
-      alert('Back navigation is not allowed during the contest');
-      return Promise.resolve(false);
-    };
-    
-    router.replace = (href: string) => {
-      // Only allow navigation to problem pages within the same contest
-      if (href.includes(`/contests/${contestId}/problems/`)) {
-        return originalReplace(href);
-      }
-      
-      // Allow submission or finish pages, but only when confirmed through the custom end dialog
-      // The parent component handles showing the dialog and collecting the "end" confirmation
-      if ((href.includes(`/contests/${contestId}/submit`) || href.includes(`/contests/${contestId}/finish`)) && 
-          allowEndNavigation.current) {
-        // This means the end dialog confirmed with "end" text
-        // Reset the flag immediately to prevent multiple navigations
-        allowEndNavigation.current = false;
-        return originalReplace(href);
-      }
-      
-      // Block other navigation attempts
-      recordViolation('Navigation attempt detected and blocked');
-      return Promise.resolve(false);
-    };
-    
-    return () => {
-      // Restore original router methods
-      router.push = originalPush;
-      router.back = originalBack;
-      router.replace = originalReplace;
-    };
-  }, [router, contestId]);
+    return () => clearInterval(timer);
+  }, [isContestActive, calculateTimeRemaining]);
 
   useEffect(() => {
-    if (requireFullScreen && !isFullScreen) {
-      requestFullScreen();
-    }
+    // Event listeners
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
 
-    // Set up tab visibility and focus detection
-    if (preventTabSwitching) {
-      // Primary detection method - visibilitychange
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-      
-      // Secondary detection methods - window blur/focus
-      window.addEventListener('blur', handleWindowBlur);
-      window.addEventListener('focus', handleWindowFocus);
-      
-      // Periodic check for focus status
-      focusCheckIntervalId.current = window.setInterval(() => {
-        // If window has lost focus for more than 2 seconds, consider it a tab switch
-        if (!windowFocused.current && Date.now() - lastFocusTime.current > 2000) {
-          recordViolation('Tab switching or window change detected. Please stay on the contest tab.');
-          windowFocused.current = true; // Reset to prevent multiple violations
-        }
-      }, 2000);
-    }
-
-    // Prevent context menu (right click)
-    if (disableCopyPaste) {
-      document.addEventListener('contextmenu', preventDefaultAction);
-    }
-
-    // Prevent copy/paste if disabled
-    if (disableCopyPaste) {
-      document.addEventListener('copy', preventDefaultAction);
-      document.addEventListener('cut', preventDefaultAction);
-      document.addEventListener('paste', preventDefaultAction);
-    }
-
-    // Prevent browser navigation (back/forward)
-    window.history.pushState(null, '', window.location.href);
-    window.addEventListener('popstate', preventNavigation);
-
-    // Multiple pushStates to ensure the history stack has many entries
-    // This makes it harder to navigate back multiple times
-    for (let i = 0; i < 10; i++) {
-      window.history.pushState(null, '', window.location.href);
-    }
-
-    // Prevent page exit/refresh
-    const preventPageExit = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = '';
-      recordViolation('Attempted to leave or refresh the page during the contest.');
-      return '';
-    };
-    window.addEventListener('beforeunload', preventPageExit);
-    
-    // Additional handling for navigation attempts
-    const preventUnload = () => {
-      recordViolation('Attempted to navigate away from the contest.');
-      // Log the violation before potentially leaving the page
-      fetch('/api/contests/violation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contestId,
-          violationType: 'navigation',
-          message: 'User attempted to leave the contest page',
-        }),
-        // Use keepalive to ensure the request completes even if the page is unloading
-        keepalive: true,
-      }).catch(err => console.error('Failed to log violation:', err));
-    };
-    window.addEventListener('unload', preventUnload);
-
-    // Prevent keyboard shortcuts for copy/paste and navigation
-    document.addEventListener('keydown', preventCopyPasteShortcuts, true);
-
-    // Detect full screen exit
-    if (requireFullScreen) {
-      document.addEventListener('fullscreenchange', handleFullScreenChange);
-    }
-
-    // Intercept all link clicks to prevent navigation
-    const interceptLinkClicks = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const link = target.closest('a');
-      if (link) {
-        const href = link.getAttribute('href');
-        
-        // Check for back links specifically and immediately block them
-        if (href && (
-          href.includes('/contests') && !href.includes(`/contests/${contestId}`) ||
-          href === '/contests' ||
-          href.includes('back') ||
-          link.textContent?.toLowerCase().includes('back')
-        )) {
-          e.preventDefault();
-          e.stopPropagation();
-          recordViolation('Back navigation is disabled during the contest');
-          return;
-        }
-        
-        // Only allow navigation to problems within the same contest
-        if (href && href.includes(`/contests/${contestId}/problems/`)) {
-          // This is allowed - let the navigation happen
-          return;
-        }
-        
-        // Allow submit button with confirmation
-        if (href && (href.includes(`/contests/${contestId}/submit`) || href.includes(`/contests/${contestId}/finish`))) {
-          // We'll use the parent component's custom end dialog instead
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-        
-        // Block all other navigation
+    // Disable right-click during contest
+    const handleContextMenu = (e: MouseEvent) => {
+      if (contestStarted) {
         e.preventDefault();
-        e.stopPropagation();
-        recordViolation('Navigation to other pages is disabled during the contest.');
       }
     };
-    
-    // Hide all back links in the DOM - more aggressive approach
-    const hideBackLinks = () => {
-      // First, find all links that contain 'back' in text or href
-      const allLinks = document.querySelectorAll('a');
-      allLinks.forEach(link => {
-        const href = link.getAttribute('href') || '';
-        const text = link.textContent?.toLowerCase() || '';
-        
-        // Check for back-related content
+    document.addEventListener('contextmenu', handleContextMenu);
+
+    // Disable certain keyboard shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (contestStarted) {
+        // Disable F12, Ctrl+Shift+I, Ctrl+U, etc.
         if (
-          href.includes('back') || 
-          text.includes('back') ||
-          text.includes('return') ||
-          href === '/contests' ||
-          (href.includes('/contests') && !href.includes(`/contests/${contestId}`))
+          e.key === 'F12' ||
+          (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+          (e.ctrlKey && e.key === 'u') ||
+          (e.ctrlKey && e.shiftKey && e.key === 'C')
         ) {
-          // First option: completely remove the element
-          if (link.parentNode) {
-            link.parentNode.removeChild(link);
-          } else {
-            // If can't remove, then hide and disable
-            link.style.display = 'none';
-            link.setAttribute('disabled', 'true');
-            link.setAttribute('aria-hidden', 'true');
-            link.removeAttribute('href');
-            // Add empty click handler to prevent default
-            link.onclick = (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              recordViolation('Back navigation attempt detected and blocked');
-              return false;
-            };
-          }
+          e.preventDefault();
+          logViolation('TAB_SWITCH', `Attempted to use developer tools: ${e.key}`);
         }
-      });
-      
-      // Also hide elements with class/id containing 'back'
-      const backElements = document.querySelectorAll('[class*="back"], [id*="back"]');
-      backElements.forEach(el => {
-        (el as HTMLElement).style.display = 'none';
-      });
+      }
     };
-    
-    // Run initially and then every second to catch dynamically added links
-    hideBackLinks();
-    const hideBackInterval = setInterval(hideBackLinks, 500); // More frequent checking
-    document.addEventListener('click', interceptLinkClicks, true);
+    document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      // Clean up event listeners
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleWindowBlur);
-      window.removeEventListener('focus', handleWindowFocus);
-      if (focusCheckIntervalId.current) {
-        window.clearInterval(focusCheckIntervalId.current);
-        focusCheckIntervalId.current = null;
-      }
-      document.removeEventListener('contextmenu', preventDefaultAction);
-      document.removeEventListener('copy', preventDefaultAction);
-      document.removeEventListener('cut', preventDefaultAction);
-      document.removeEventListener('paste', preventDefaultAction);
-      document.removeEventListener('keydown', preventCopyPasteShortcuts, true);
-      document.removeEventListener('fullscreenchange', handleFullScreenChange);
-      window.removeEventListener('popstate', preventNavigation);
-      window.removeEventListener('beforeunload', preventPageExit);
-      window.removeEventListener('unload', preventUnload);
-      document.removeEventListener('click', interceptLinkClicks, true);
-      clearInterval(hideBackInterval);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [requireFullScreen, disableCopyPaste, preventTabSwitching, isFullScreen, contestId]);
+  }, [contestStarted, handleFullscreenChange, handleVisibilityChange, handleWindowBlur, logViolation]);
 
-  // Capture webcam screenshot on violation for evidence
-  const captureWebcamScreenshot = async () => {
-    try {
-      // Find the webcam element in the DOM
-      const webcamElement = document.querySelector('video');
-      if (!webcamElement) return null;
+  // Face detection (placeholder - would integrate with TensorFlow.js)
+  useEffect(() => {
+    if (!webcamEnabled || !contestStarted) return;
+
+    const detectFaces = () => {
+      // Placeholder for face detection logic
+      // In a real implementation, you would use TensorFlow.js BlazeFace model
+      const faceDetected = Math.random() > 0.1; // 90% chance of face detection
       
-      // Create a canvas to capture the screenshot
-      const canvas = document.createElement('canvas');
-      canvas.width = webcamElement.videoWidth;
-      canvas.height = webcamElement.videoHeight;
+      if (!faceDetected) {
+        logViolation('FACE_NOT_DETECTED', 'No face detected in webcam feed');
+      }
       
-      // Draw the video frame to the canvas
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-      ctx.drawImage(webcamElement, 0, 0, canvas.width, canvas.height);
-      
-      // Convert to base64 data URL
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      
-      // In a real implementation, you would upload this to your server
-      // For this example, we'll just return the data URL
-      return dataUrl;
-    } catch (error) {
-      console.error('Error capturing webcam screenshot:', error);
-      return null;
+      setFaceDetected(faceDetected);
+    };
+
+    const faceDetectionInterval = setInterval(detectFaces, 5000); // Check every 5 seconds
+    return () => clearInterval(faceDetectionInterval);
+  }, [webcamEnabled, contestStarted, logViolation]);
+
+  // Don't render if contest hasn't started
+  if (!isContestActive() && !contestStarted) {
+    const now = new Date();
+    const start = new Date(contest.startTime);
+    
+    if (now < start) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">Contest hasn't started yet</h1>
+            <p className="text-gray-600">
+              Contest starts at: {new Date(contest.startTime).toLocaleString()}
+            </p>
+          </div>
+        </div>
+      );
     }
-  };
-  
-  // Record webcam-specific violation
-  const recordWebcamViolation = async (message: string, violationType: string) => {
-    // Record general violation first
-    recordViolation(message);
-    
-    // Capture screenshot for evidence
-    const screenshot = await captureWebcamScreenshot();
-    
-    // Log violation with screenshot
-    fetch('/api/contests/violation', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contestId,
-        violationType,
-        details: message,
-        screenshotUrl: screenshot, // In production, store the URL after uploading
-      }),
-    }).catch(err => console.error('Failed to log webcam violation:', err));
-  };
+  }
 
   return (
-    <div className="secure-contest-view">
-      {/* Security warning banner */}
-      {securityWarnings.length > 0 && (
-        <div className="bg-red-600 text-white p-4 sticky top-0 z-50">
-          <h3 className="font-bold mb-2">Security Warning ({securityViolations}/{MAX_VIOLATIONS})</h3>
-          <ul className="list-disc pl-5">
-            {securityWarnings.slice(-3).map((warning, index) => (
-              <li key={index}>{warning}</li>
-            ))}
-          </ul>
-          {requireFullScreen && !isFullScreen && (
-            <button 
-              onClick={requestFullScreen}
-              className="mt-2 bg-white text-red-600 px-4 py-2 rounded font-semibold"
-            >
-              Return to Full Screen
-            </button>
-          )}
+    <div className="min-h-screen bg-gray-50">
+      {/* Security Warning Overlay */}
+      {warningVisible && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white p-4 text-center">
+          <div className="font-bold">SECURITY VIOLATION DETECTED</div>
+          <div className="text-sm">Please maintain contest integrity. Violations are being recorded.</div>
         </div>
       )}
 
-      {/* Webcam monitoring - temporarily disabled */}
-      {requireWebcamMonitoring && false && (
-        <WebcamMonitor 
-          enabled={requireWebcamMonitoring}
-          onViolation={(message) => recordWebcamViolation(message, 'webcam')}
-          onWarning={(message) => setSecurityWarnings(prev => [...prev, message])}
-        />
+      {/* Pre-contest security setup */}
+      {!contestStarted && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-40">
+          <div className="bg-white p-8 rounded-lg max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold mb-4">Contest Security Setup</h2>
+            <div className="space-y-4 mb-6">
+              <div className="flex items-center space-x-2">
+                <div className={`w-4 h-4 rounded-full ${webcamEnabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>Webcam Access</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className={`w-4 h-4 rounded-full ${isFullscreen ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>Fullscreen Mode</span>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600 mb-4">
+              <ul className="list-disc list-inside space-y-1">
+                <li>Your webcam will be monitored during the contest</li>
+                <li>You must remain in fullscreen mode</li>
+                <li>Tab switching and window changes are tracked</li>
+                <li>Developer tools are disabled</li>
+              </ul>
+            </div>
+            <button
+              onClick={startSecureMode}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700"
+            >
+              Start Secure Contest Mode
+            </button>
+          </div>
+        </div>
       )}
 
-      {/* Contest content */}
-      {children}
+      {/* Main contest interface */}
+      {contestStarted && (
+        <>
+          {/* Header */}
+          <div className="bg-white shadow-sm border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16">
+                <div className="flex items-center space-x-4">
+                  <h1 className="text-xl font-semibold text-gray-900">{contest.title}</h1>
+                  <div className="flex items-center space-x-2">
+                    <div className={`w-3 h-3 rounded-full ${faceDetected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="text-sm text-gray-600">
+                      {faceDetected ? 'Face Detected' : 'No Face'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  {timeRemaining && (
+                    <div className="bg-red-100 text-red-800 px-3 py-1 rounded font-mono">
+                      {timeRemaining}
+                    </div>
+                  )}
+                  <div className="text-sm text-gray-600">
+                    Violations: {violations.length}
+                  </div>
+                  <button
+                    onClick={exitFullscreen}
+                    className="text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Exit Contest
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Webcam monitor (small overlay) */}
+          {webcamEnabled && (
+            <div className="fixed top-20 right-4 z-30">
+              <div className="bg-white p-2 rounded-lg shadow-lg">
+                <Webcam
+                  ref={webcamRef}
+                  width={160}
+                  height={120}
+                  mirrored={true}
+                  className="rounded"
+                />
+                <div className="text-xs text-gray-600 text-center mt-1">Monitoring Active</div>
+              </div>
+            </div>
+          )}
+
+          {/* Main content area */}
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Contest Problems</h2>
+              
+              <div className="grid gap-4">
+                {contest.questions.map((question, index) => (
+                  <div key={question.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          Problem {index + 1}: {question.title}
+                        </h3>
+                        <p className="text-gray-600">Points: {question.points}</p>
+                      </div>
+                      <Link
+                        href={`/contests/${contest.id}/problems/${question.id}`}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                      >
+                        Solve
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Security status */}
+              <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold mb-2">Security Status</h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="flex justify-between">
+                    <span>Fullscreen:</span>
+                    <span className={isFullscreen ? 'text-green-600' : 'text-red-600'}>
+                      {isFullscreen ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Tab Visible:</span>
+                    <span className={isTabVisible ? 'text-green-600' : 'text-red-600'}>
+                      {isTabVisible ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Webcam:</span>
+                    <span className={webcamEnabled ? 'text-green-600' : 'text-red-600'}>
+                      {webcamEnabled ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Face Detection:</span>
+                    <span className={faceDetected ? 'text-green-600' : 'text-red-600'}>
+                      {faceDetected ? 'Detected' : 'Not Detected'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent violations */}
+              {violations.length > 0 && (
+                <div className="mt-6 p-4 bg-red-50 rounded-lg">
+                  <h3 className="font-semibold text-red-800 mb-2">Security Violations</h3>
+                  <div className="space-y-2">
+                    {violations.slice(-3).map((violation) => (
+                      <div key={violation.id} className="text-sm text-red-700">
+                        <span className="font-medium">{violation.type}:</span> {violation.details}
+                        <span className="text-red-500 ml-2">
+                          ({new Date(violation.timestamp).toLocaleTimeString()})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {violations.length > 3 && (
+                    <Link
+                      href={`/contests/${contest.id}/violation`}
+                      className="text-red-600 hover:text-red-800 text-sm mt-2 inline-block"
+                    >
+                      View all violations →
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

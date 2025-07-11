@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
 interface Contest {
@@ -8,206 +8,102 @@ interface Contest {
   title: string;
   startTime: string;
   endTime: string;
-  questions: {
-    id: string;
-    title: string;
-    points: number;
-  }[];
 }
 
-function getStatus(contest: Contest) {
-  const now = new Date();
-  const start = new Date(contest.startTime);
-  const end = new Date(contest.endTime);
-  if (now < start) return "upcoming";
-  if (now > end) return "past";
-  return "ongoing";
-}
-
-export default function ContestListPage() {
+export default function ContestsListPage() {
   const [contests, setContests] = useState<Contest[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchContests() {
+    const fetchContests = async () => {
       try {
-        const res = await fetch('/api/contests');
-        if (res.ok) {
-          const data = await res.json();
-          setContests(data);
+        const response = await fetch('/api/contests');
+        if (response.ok) {
+          const data = await response.json();
+          setContests(data.contests || []);
         }
       } catch (error) {
         console.error('Error fetching contests:', error);
       } finally {
         setLoading(false);
       }
-    }
+    };
 
     fetchContests();
-    
-    // Block back navigation attempts
-    window.history.pushState(null, '', window.location.href);
-    const handlePopState = () => {
-      window.history.pushState(null, '', window.location.href);
-    };
-    window.addEventListener('popstate', handlePopState);
-    
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
   }, []);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading contests...</div>
+        <div className="text-xl">Loading contests...</div>
       </div>
     );
   }
 
-  const upcomingContests = contests.filter(contest => getStatus(contest) === "upcoming");
-  const ongoingContests = contests.filter(contest => getStatus(contest) === "ongoing");
-  const pastContests = contests.filter(contest => getStatus(contest) === "past");
-
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Coding Contests</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                href="/dashboard"
-                className="text-blue-600 hover:text-blue-800"
-              >
-                Dashboard
-              </Link>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto py-8 px-4">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800">
+            All Contests
+          </h1>
+          <Link
+            href="/admin/contests/new"
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Create New Contest
+          </Link>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {ongoingContests.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Ongoing Contests</h2>
-            <div className="grid gap-6 lg:grid-cols-2">
-              {ongoingContests.map((contest) => (
-                <div
-                  key={contest.id}
-                  className="bg-white rounded-lg shadow-md overflow-hidden border border-green-200 hover:shadow-lg transition-shadow"
-                >
-                  <div className="p-6">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">{contest.title}</h3>
-                      <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                        Ongoing
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600 space-y-1 mb-4">
-                      <p>Start: {new Date(contest.startTime).toLocaleString()}</p>
-                      <p>End: {new Date(contest.endTime).toLocaleString()}</p>
-                      <p>Problems: {contest.questions.length}</p>
-                    </div>
-                    <div className="flex justify-end">
-                      <Link
-                        href={`/contests/${contest.id}`}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors"
-                      >
-                        View Contest
-                      </Link>
-                    </div>
+        {contests.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+            <div className="text-6xl mb-4">🏆</div>
+            <h2 className="text-2xl font-semibold text-gray-700 mb-2">
+              No Contests Available
+            </h2>
+            <p className="text-gray-600 mb-6">
+              There are no contests available at the moment. Check back later!
+            </p>
+            <Link
+              href="/"
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Go Home
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {contests.map((contest) => (
+              <div key={contest.id} className="bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow">
+                <h3 className="text-xl font-semibold text-gray-800 mb-3">
+                  {contest.title}
+                </h3>
+                <div className="space-y-2 text-sm text-gray-600 mb-4">
+                  <div>
+                    <span className="font-medium">Start:</span>{' '}
+                    {new Date(contest.startTime).toLocaleString()}
+                  </div>
+                  <div>
+                    <span className="font-medium">End:</span>{' '}
+                    {new Date(contest.endTime).toLocaleString()}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {upcomingContests.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Upcoming Contests</h2>
-            <div className="grid gap-6 lg:grid-cols-2">
-              {upcomingContests.map((contest) => (
-                <div
-                  key={contest.id}
-                  className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-                >
-                  <div className="p-6">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">{contest.title}</h3>
-                      <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                        Upcoming
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600 space-y-1 mb-4">
-                      <p>Start: {new Date(contest.startTime).toLocaleString()}</p>
-                      <p>End: {new Date(contest.endTime).toLocaleString()}</p>
-                      <p>Problems: {contest.questions.length}</p>
-                    </div>
-                    <div className="flex justify-end">
-                      <Link
-                        href={`/contests/${contest.id}`}
-                        className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded transition-colors"
-                      >
-                        View Details
-                      </Link>
-                    </div>
-                  </div>
+                <div className="flex space-x-2">
+                  <Link
+                    href={`/contests/${contest.id}`}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white text-center rounded hover:bg-blue-700"
+                  >
+                    View Contest
+                  </Link>
+                  <Link
+                    href={`/contests/${contest.id}/leaderboard`}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white text-center rounded hover:bg-green-700"
+                  >
+                    Leaderboard
+                  </Link>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {pastContests.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Past Contests</h2>
-            <div className="grid gap-6 lg:grid-cols-2">
-              {pastContests.map((contest) => (
-                <div
-                  key={contest.id}
-                  className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-                >
-                  <div className="p-6">
-                    <div className="flex justify-between items-start">
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">{contest.title}</h3>
-                      <span className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                        Past
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600 space-y-1 mb-4">
-                      <p>Start: {new Date(contest.startTime).toLocaleString()}</p>
-                      <p>End: {new Date(contest.endTime).toLocaleString()}</p>
-                      <p>Problems: {contest.questions.length}</p>
-                    </div>
-                    <div className="flex justify-end space-x-3">
-                      <Link
-                        href={`/contests/${contest.id}/leaderboard`}
-                        className="bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-2 px-4 rounded transition-colors"
-                      >
-                        Leaderboard
-                      </Link>
-                      <Link
-                        href={`/contests/${contest.id}`}
-                        className="bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded transition-colors"
-                      >
-                        View Details
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {contests.length === 0 && (
-          <div className="bg-white rounded-lg shadow-md p-6 text-center">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No contests available</h3>
-            <p className="text-gray-500">Check back later for upcoming coding contests.</p>
+              </div>
+            ))}
           </div>
         )}
       </div>

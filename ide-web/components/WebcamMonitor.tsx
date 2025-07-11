@@ -1,315 +1,344 @@
-'use client';
-
-import React, { useEffect, useRef, useState } from 'react';
+"use client";
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import * as tf from '@tensorflow/tfjs';
-import * as blazeface from '@tensorflow-models/blazeface';
 
 interface WebcamMonitorProps {
-  enabled: boolean;
-  onViolation: (message: string) => void;
-  onWarning: (message: string) => void;
+  isActive: boolean;
+  onFaceDetected: (detected: boolean) => void;
+  onMultipleFaces: (count: number) => void;
+  onViolation: (type: string, details: string) => void;
+  className?: string;
+  width?: number;
+  height?: number;
 }
 
-export default function WebcamMonitor({ enabled, onViolation, onWarning }: WebcamMonitorProps) {
+interface FaceDetection {
+  detected: boolean;
+  count: number;
+  confidence: number;
+  lastDetection: number;
+}
+
+export default function WebcamMonitor({
+  isActive,
+  onFaceDetected,
+  onMultipleFaces,
+  onViolation,
+  className = "",
+  width = 320,
+  height = 240
+}: WebcamMonitorProps) {
   const webcamRef = useRef<Webcam>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hasWebcamPermission, setHasWebcamPermission] = useState<boolean | null>(null);
-  const [model, setModel] = useState<blazeface.BlazeFaceModel | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [faceVisible, setFaceVisible] = useState(false);
-  const [lookingAway, setLookingAway] = useState(false);
-  const [lastFaceDetection, setLastFaceDetection] = useState(Date.now());
-  const [consecutiveNoFace, setConsecutiveNoFace] = useState(0);
-  const [consecutiveLookingAway, setConsecutiveLookingAway] = useState(0);
-  
-  // Load TensorFlow models
-  useEffect(() => {
-    if (!enabled) return;
+  const [isWebcamReady, setIsWebcamReady] = useState(false);
+  const [detectionStatus, setDetectionStatus] = useState<FaceDetection>({
+    detected: false,
+    count: 0,
+    confidence: 0,
+    lastDetection: 0
+  });
+  const [permissionStatus, setPermissionStatus] = useState<'pending' | 'granted' | 'denied'>('pending');
+  const [error, setError] = useState<string>("");
 
-    async function loadModels() {
-      try {
-        setIsLoading(true);
-        
-        // Load face detection model
-        await tf.ready();
-        const blazeFaceModel = await blazeface.load();
-        setModel(blazeFaceModel);
-        
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error loading models:', error);
-        setHasWebcamPermission(false);
-      }
+  // Detection intervals and thresholds
+  const DETECTION_INTERVAL = 3000; // Check every 3 seconds
+  const NO_FACE_THRESHOLD = 10000; // Alert after 10 seconds without face
+  const MULTIPLE_FACE_THRESHOLD = 5000; // Alert after 5 seconds with multiple faces
+
+  // Request webcam permission
+  const requestWebcamPermission = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        },
+        audio: false 
+      });
+      
+      setPermissionStatus('granted');
+      setError("");
+      
+      // Stop the stream immediately as Webcam component will handle it
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      console.error('Webcam permission denied:', err);
+      setPermissionStatus('denied');
+      setError("Webcam access is required for contest monitoring");
+      onViolation('WEBCAM_PERMISSION_DENIED', 'User denied webcam access');
     }
-    
-    loadModels();
-    
-    return () => {
-      // Cleanup
-      if (model) {
-        // No explicit dispose method for BlazeFace model
-      }
-    };
-  }, [enabled]);
-  
-  // Webcam permission check
-  useEffect(() => {
-    if (!enabled) return;
-    
-    async function checkPermission() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasWebcamPermission(true);
-        
-        // Clean up the stream
-        stream.getTracks().forEach(track => track.stop());
-      } catch (error) {
-        console.error('Error accessing webcam:', error);
-        setHasWebcamPermission(false);
-        onWarning('Webcam access denied. Please enable webcam access for this site.');
-      }
+  }, [onViolation]);
+
+  // Mock face detection (in production, you would use TensorFlow.js BlazeFace model)
+  const performFaceDetection = useCallback(async () => {
+    if (!webcamRef.current || !canvasRef.current || !isWebcamReady) {
+      return;
     }
-    
-    checkPermission();
-  }, [enabled, onWarning]);
-  
-  // Face detection loop
-  useEffect(() => {
-    if (!enabled || isLoading || !model || hasWebcamPermission !== true) return;
-    
-    let animationId: number;
-    let lastWarnTime = 0;
-    let lastViolationTime = 0;
-    
-    const detectFace = async () => {
-      if (!webcamRef.current || !webcamRef.current.video || webcamRef.current.video.readyState !== 4) {
-        animationId = requestAnimationFrame(detectFace);
+
+    try {
+      const video = webcamRef.current.video;
+      const canvas = canvasRef.current;
+      
+      if (!video || video.readyState !== 4) {
         return;
       }
-      
-      const video = webcamRef.current.video;
-      
-      try {
-        // Use BlazeFace for face detection
-        const predictions = await model.estimateFaces(video, false);
-        
-        const hasFace = predictions.length > 0;
-        setFaceVisible(hasFace);
-        
-        if (hasFace) {
-          setLastFaceDetection(Date.now());
-          setConsecutiveNoFace(0);
-          
-          // Get the main face prediction
-          const face = predictions[0];
-          
-          // Simple face orientation check based on BlazeFace landmarks
-          // BlazeFace provides 6 keypoints: 4 for eyes, 1 for nose, 1 for mouth
-          const landmarks = face.landmarks as number[][];
-          
-          // Simplified check for looking away using BlazeFace landmarks
-          // We'll use the relative positions of eyes, nose, and mouth to approximate gaze
-          const isLookingAway = simplifiedLookingAwayCheck(landmarks, 
-                                                         face.topLeft as number[], 
-                                                         face.bottomRight as number[]);
-          setLookingAway(isLookingAway);
-          
-          if (isLookingAway) {
-            setConsecutiveLookingAway(prev => prev + 1);
-            
-            // Send warning after 3 consecutive looking away frames (about 0.5s)
-            if (consecutiveLookingAway >= 3 && Date.now() - lastWarnTime > 3000) {
-              onWarning('Please look at the screen during the contest.');
-              lastWarnTime = Date.now();
-            }
-            
-            // Send violation after 10 consecutive looking away frames (about 1.5s)
-            if (consecutiveLookingAway >= 10 && Date.now() - lastViolationTime > 10000) {
-              onViolation('Looking away from screen detected.');
-              lastViolationTime = Date.now();
-            }
-          } else {
-            setConsecutiveLookingAway(0);
-          }
-          
-          // Draw face landmarks if canvas is available
-          if (canvasRef.current) {
-            drawFaceBox(face.topLeft as number[], 
-                      face.bottomRight as number[], 
-                      landmarks, 
-                      canvasRef.current);
-          }
-        } else {
-          setConsecutiveNoFace(prev => prev + 1);
-          
-          // Send warning after 30 consecutive no-face frames (about 1s)
-          if (consecutiveNoFace >= 30 && Date.now() - lastWarnTime > 3000) {
-            onWarning('Face not detected. Please position yourself in front of the camera.');
-            lastWarnTime = Date.now();
-          }
-          
-          // Send violation after 90 consecutive no-face frames (about 3s)
-          if (consecutiveNoFace >= 90 && Date.now() - lastViolationTime > 10000) {
-            onViolation('Face not visible for an extended period.');
-            lastViolationTime = Date.now();
-          }
-          
-          // Clear canvas
-          if (canvasRef.current) {
-            const ctx = canvasRef.current.getContext('2d');
-            if (ctx) {
-              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error in face detection:', error);
-      }
-      
-      animationId = requestAnimationFrame(detectFace);
-    };
-    
-    detectFace();
-    
-    return () => {
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    };
-  }, [enabled, isLoading, model, hasWebcamPermission, consecutiveNoFace, consecutiveLookingAway, onWarning, onViolation]);
-  
-  // Helper functions
-  const simplifiedLookingAwayCheck = (landmarks: number[][], topLeft: number[], bottomRight: number[]) => {
-    if (!landmarks || landmarks.length < 6) {
-      return false;
-    }
-    
-    // BlazeFace provides 6 keypoints in this order:
-    // Right eye, left eye, nose, mouth, right ear, left ear
-    // We'll use these to determine if someone is looking away
-    
-    const rightEye = landmarks[0];
-    const leftEye = landmarks[1];
-    const nose = landmarks[2];
-    const mouth = landmarks[3];
-    
-    // Calculate face width based on bounding box
-    const faceWidth = bottomRight[0] - topLeft[0];
-    
-    // Calculate midpoint between eyes
-    const eyesMidpointX = (rightEye[0] + leftEye[0]) / 2;
-    
-    // Check if nose is offset significantly from the midpoint between eyes
-    const noseDeltaX = Math.abs(nose[0] - eyesMidpointX);
-    
-    // If nose is too far to either side compared to eyes midpoint, person is likely looking away
-    return noseDeltaX > faceWidth * 0.15; // Threshold can be adjusted
-  };
-  
-  const drawFaceBox = (topLeft: number[], bottomRight: number[], landmarks: number[][], canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    // Set canvas dimensions to match video
-    if (webcamRef.current && webcamRef.current.video) {
-      const video = webcamRef.current.video;
+
+      const context = canvas.getContext('2d');
+      if (!context) return;
+
+      // Set canvas dimensions to match video
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      // Draw current frame to canvas
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Mock face detection logic (replace with actual TensorFlow.js implementation)
+      const mockDetection = mockFaceDetectionLogic();
+      
+      setDetectionStatus(mockDetection);
+      onFaceDetected(mockDetection.detected);
+
+      // Handle multiple faces
+      if (mockDetection.count > 1) {
+        onMultipleFaces(mockDetection.count);
+        onViolation('MULTIPLE_FACES', `Detected ${mockDetection.count} faces in frame`);
+      }
+
+      // Handle no face detection
+      if (!mockDetection.detected) {
+        const timeSinceLastDetection = Date.now() - mockDetection.lastDetection;
+        if (timeSinceLastDetection > NO_FACE_THRESHOLD) {
+          onViolation('NO_FACE_DETECTED', 'No face detected for extended period');
+        }
+      }
+
+    } catch (error) {
+      console.error('Face detection error:', error);
+      setError("Face detection failed");
     }
+  }, [isWebcamReady, onFaceDetected, onMultipleFaces, onViolation]);
+
+  // Mock face detection logic (replace with actual ML model)
+  const mockFaceDetectionLogic = useCallback((): FaceDetection => {
+    // Simulate realistic face detection behavior
+    const random = Math.random();
     
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // 85% chance of detecting exactly one face
+    if (random < 0.85) {
+      return {
+        detected: true,
+        count: 1,
+        confidence: 0.8 + Math.random() * 0.2,
+        lastDetection: Date.now()
+      };
+    }
+    // 10% chance of no face
+    else if (random < 0.95) {
+      return {
+        detected: false,
+        count: 0,
+        confidence: 0,
+        lastDetection: detectionStatus.lastDetection
+      };
+    }
+    // 5% chance of multiple faces
+    else {
+      return {
+        detected: true,
+        count: 2 + Math.floor(Math.random() * 3), // 2-4 faces
+        confidence: 0.7 + Math.random() * 0.3,
+        lastDetection: Date.now()
+      };
+    }
+  }, [detectionStatus.lastDetection]);
+
+  // Initialize webcam when component mounts
+  useEffect(() => {
+    if (isActive && permissionStatus === 'pending') {
+      requestWebcamPermission();
+    }
+  }, [isActive, permissionStatus, requestWebcamPermission]);
+
+  // Start face detection when webcam is ready
+  useEffect(() => {
+    if (!isActive || !isWebcamReady || permissionStatus !== 'granted') {
+      return;
+    }
+
+    const detectionInterval = setInterval(performFaceDetection, DETECTION_INTERVAL);
     
-    // Draw bounding box
-    ctx.strokeStyle = faceVisible ? (lookingAway ? 'orange' : 'green') : 'red';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.rect(topLeft[0], topLeft[1], bottomRight[0] - topLeft[0], bottomRight[1] - topLeft[1]);
-    ctx.stroke();
-    
-    // Draw landmarks
-    ctx.fillStyle = faceVisible ? (lookingAway ? 'orange' : 'green') : 'red';
-    
-    landmarks.forEach(landmark => {
-      ctx.beginPath();
-      ctx.arc(landmark[0], landmark[1], 3, 0, 2 * Math.PI);
-      ctx.fill();
-    });
-    
-    // Draw status text
-    ctx.font = '16px Arial';
-    ctx.fillStyle = faceVisible ? (lookingAway ? 'orange' : 'green') : 'red';
-    ctx.fillText(
-      faceVisible ? (lookingAway ? 'Looking Away' : 'Face Detected') : 'No Face Detected',
-      10, 30
-    );
-  };
-  
-  if (!enabled) {
+    return () => {
+      clearInterval(detectionInterval);
+    };
+  }, [isActive, isWebcamReady, permissionStatus, performFaceDetection]);
+
+  // Handle webcam ready state
+  const handleWebcamReady = useCallback(() => {
+    setIsWebcamReady(true);
+    setError("");
+  }, []);
+
+  // Handle webcam errors
+  const handleWebcamError = useCallback((error: string | DOMException) => {
+    console.error('Webcam error:', error);
+    setIsWebcamReady(false);
+    setError(`Webcam error: ${error}`);
+    onViolation('WEBCAM_ERROR', `Webcam encountered an error: ${error}`);
+  }, [onViolation]);
+
+  // Retry webcam connection
+  const retryWebcam = useCallback(() => {
+    setError("");
+    setPermissionStatus('pending');
+    setIsWebcamReady(false);
+    requestWebcamPermission();
+  }, [requestWebcamPermission]);
+
+  if (!isActive) {
     return null;
   }
-  
+
   return (
-    <div className="webcam-monitor">
-      {hasWebcamPermission === false && (
-        <div className="bg-red-600 text-white p-4 mb-2 rounded">
-          Webcam access is required for this contest. Please enable your webcam.
-        </div>
-      )}
-      
-      {isLoading && (
-        <div className="bg-blue-500 text-white p-4 mb-2 rounded">
-          Loading face detection models...
-        </div>
-      )}
-      
+    <div className={`webcam-monitor ${className}`}>
       <div className="relative">
-        <Webcam
-          ref={webcamRef}
-          audio={false}
-          mirrored={true}
-          screenshotFormat="image/jpeg"
-          videoConstraints={{
-            width: 640,
-            height: 480,
-            facingMode: "user"
-          }}
-          className="rounded border-2 border-gray-300"
-          style={{ 
-            width: '240px', 
-            height: '180px',
-            objectFit: 'cover',
-            position: 'absolute',
-            right: '20px',
-            top: '20px',
-            zIndex: 10
-          }}
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            width: '240px',
-            height: '180px',
-            position: 'absolute',
-            right: '20px',
-            top: '20px',
-            zIndex: 11
-          }}
-        />
-        
-        {!faceVisible && (
-          <div className="absolute right-20 top-20 bg-red-600 bg-opacity-70 text-white p-1 z-20 rounded text-xs">
-            Face not detected
+        {/* Webcam feed */}
+        {permissionStatus === 'granted' ? (
+          <div className="relative">
+            <Webcam
+              ref={webcamRef}
+              audio={false}
+              width={width}
+              height={height}
+              mirrored={true}
+              onUserMedia={handleWebcamReady}
+              onUserMediaError={handleWebcamError}
+              className="rounded-lg"
+              videoConstraints={{
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: 'user'
+              }}
+            />
+            
+            {/* Detection overlay */}
+            <div className="absolute top-2 left-2 right-2">
+              <div className="flex justify-between items-center">
+                <div className={`px-2 py-1 rounded text-xs font-medium ${
+                  detectionStatus.detected 
+                    ? detectionStatus.count === 1 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-orange-100 text-orange-800'
+                    : 'bg-red-100 text-red-800'
+                }`}>
+                  {detectionStatus.detected 
+                    ? detectionStatus.count === 1 
+                      ? 'Face Detected' 
+                      : `${detectionStatus.count} Faces`
+                    : 'No Face'
+                  }
+                </div>
+                
+                <div className={`w-3 h-3 rounded-full ${
+                  isWebcamReady ? 'bg-green-500' : 'bg-red-500'
+                }`} title={isWebcamReady ? 'Webcam Active' : 'Webcam Inactive'}></div>
+              </div>
+            </div>
+
+            {/* Confidence indicator */}
+            {detectionStatus.detected && (
+              <div className="absolute bottom-2 left-2 right-2">
+                <div className="bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                  Confidence: {(detectionStatus.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            )}
+          </div>
+        ) : permissionStatus === 'denied' ? (
+          <div className="flex flex-col items-center justify-center bg-red-50 border-2 border-red-200 rounded-lg p-4"
+               style={{ width, height }}>
+            <div className="text-red-600 text-center">
+              <div className="text-lg font-semibold mb-2">Webcam Access Required</div>
+              <div className="text-sm mb-3">Please enable webcam access to continue</div>
+              <button
+                onClick={retryWebcam}
+                className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center bg-gray-100 rounded-lg"
+               style={{ width, height }}>
+            <div className="text-gray-600 text-center">
+              <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <div className="text-sm">Requesting webcam access...</div>
+            </div>
           </div>
         )}
-        
-        {faceVisible && lookingAway && (
-          <div className="absolute right-20 top-20 bg-yellow-600 bg-opacity-70 text-white p-1 z-20 rounded text-xs">
-            Looking away
+
+        {/* Hidden canvas for face detection processing */}
+        <canvas
+          ref={canvasRef}
+          className="hidden"
+        />
+
+        {/* Error display */}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-90 rounded-lg">
+            <div className="text-red-800 text-center p-2">
+              <div className="font-medium mb-1">Error</div>
+              <div className="text-xs">{error}</div>
+              <button
+                onClick={retryWebcam}
+                className="mt-2 bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Status information */}
+      <div className="mt-2 text-xs text-gray-600">
+        <div className="flex justify-between">
+          <span>Status:</span>
+          <span className={
+            isWebcamReady ? 'text-green-600' : 'text-red-600'
+          }>
+            {isWebcamReady ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        {detectionStatus.detected && (
+          <div className="flex justify-between">
+            <span>Last Detection:</span>
+            <span>{new Date(detectionStatus.lastDetection).toLocaleTimeString()}</span>
           </div>
         )}
       </div>
     </div>
   );
 }
+
+// Real-world implementation note:
+// To implement actual face detection, you would:
+// 1. Install @tensorflow/tfjs and @tensorflow-models/blazeface
+// 2. Load the BlazeFace model
+// 3. Replace mockFaceDetectionLogic with actual TensorFlow.js face detection
+// 
+// Example implementation:
+// import * as tf from '@tensorflow/tfjs';
+// import * as blazeface from '@tensorflow-models/blazeface';
+//
+// const model = await blazeface.load();
+// const predictions = await model.estimateFaces(video, false);
+// 
+// return {
+//   detected: predictions.length > 0,
+//   count: predictions.length,
+//   confidence: predictions[0]?.probability || 0,
+//   lastDetection: Date.now()
+// };

@@ -2,13 +2,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-
-// Dynamically import SolutionValidator to avoid SSR issues with Monaco editor
-const SolutionValidator = dynamic(
-  () => import("@/components/SolutionValidator"),
-  { ssr: false }
-);
 
 interface TestCase {
   id?: string;
@@ -30,13 +23,6 @@ interface Question {
   testCases: TestCase[];
 }
 
-interface ValidationResult {
-  valid: boolean;
-  passedTests: number;
-  totalTests: number;
-  results: any[];
-}
-
 export default function EditQuestionPage({ 
   params 
 }: { 
@@ -53,15 +39,11 @@ export default function EditQuestionPage({
   const [points, setPoints] = useState(100);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [error, setError] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [contestId, setContestId] = useState<string>("");
   const [questionId, setQuestionId] = useState<string>("");
-  const [showValidator, setShowValidator] = useState(false);
-  const [validationResults, setValidationResults] = useState<ValidationResult | null>(null);
-  const [validationComplete, setValidationComplete] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -109,83 +91,28 @@ export default function EditQuestionPage({
 
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", output: "", isHidden: true }]);
-    // Reset validation when test cases change
-    setValidationComplete(false);
-    setValidationResults(null);
   };
 
   const removeTestCase = (index: number) => {
     setTestCases(testCases.filter((_, i) => i !== index));
-    // Reset validation when test cases change
-    setValidationComplete(false);
-    setValidationResults(null);
   };
 
   const updateTestCase = (index: number, field: keyof TestCase, value: string | boolean) => {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
-    // Reset validation when test cases change
-    setValidationComplete(false);
-    setValidationResults(null);
-  };
-
-  const validateFields = () => {
-    const errors: Record<string, string> = {};
-    
-    if (!title.trim()) {
-      errors.title = "Title is required";
-    }
-    
-    if (!description.trim()) {
-      errors.description = "Problem description is required";
-    }
-    
-    if (!inputFormat.trim()) {
-      errors.inputFormat = "Input format is required";
-    }
-    
-    if (!outputFormat.trim()) {
-      errors.outputFormat = "Output format is required";
-    }
-    
-    if (!constraints.trim()) {
-      errors.constraints = "Constraints are required";
-    }
-    
-    if (!sampleInput.trim()) {
-      errors.sampleInput = "Sample input is required";
-    }
-    
-    if (!sampleOutput.trim()) {
-      errors.sampleOutput = "Sample output is required";
-    }
-    
-    const validTestCases = testCases.filter(tc => tc.input.trim() && tc.output.trim());
-    if (validTestCases.length === 0) {
-      errors.testCases = "At least one valid test case is required";
-    }
-    
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const handleValidationComplete = (results: ValidationResult) => {
-    setValidationResults(results);
-    setValidationComplete(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contestId || !questionId) return;
     
-    // Comprehensive validation
-    if (!validateFields()) {
-      setError("Please fix all required fields marked in red");
+    // Validation
+    if (!title.trim() || !description.trim()) {
+      setError("Title and description are required");
       return;
     }
-    
-    // Ensure test cases are valid
+
     const validTestCases = testCases.filter(tc => tc.input.trim() && tc.output.trim());
     
     setError("");
@@ -237,8 +164,8 @@ export default function EditQuestionPage({
         router.push(`/admin/contests/${contestId}`);
       }, 1500);
 
-    } catch (error: any) {
-      setError(error.message || "Failed to update question");
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Failed to update question");
     }
     setSaving(false);
   };
@@ -263,325 +190,256 @@ export default function EditQuestionPage({
         const errorData = await res.json();
         setError(errorData.error || "Failed to delete question");
       }
-    } catch (error) {
+    } catch {
       setError("Failed to delete question");
     }
     setSaving(false);
-  };  if (loading) {
-      return (
-        <div className="p-8 max-w-4xl mx-auto">
-          <div className="text-center">Loading question...</div>
-        </div>
-      );
-    }
+  };
 
-    if (!question) {
-      return (
-        <div className="p-8 max-w-4xl mx-auto">
-          <div className="text-center text-red-600">Question not found</div>
-          <div className="text-center mt-4">
-            <Link href={`/admin/contests/${contestId}`} className="text-blue-600 hover:underline">
-              ← Back to Contest
-            </Link>
-          </div>
-        </div>
-      );
-    }
-
+  if (loading) {
     return (
       <div className="p-8 max-w-4xl mx-auto">
-        <div className="mb-6">
-          <Link href={`/admin/contests/${contestId}`} className="text-blue-600 hover:underline">
-            ← Back to Contest
-          </Link>
-          <h1 className="text-2xl font-bold mt-2">Edit Question</h1>
-        </div>
-
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
-        )}
-
-        {success && (
-          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-            {success}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-white rounded shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Question Details</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Title *
-                  {fieldErrors.title && (
-                    <span className="text-red-600 ml-1">{fieldErrors.title}</span>
-                  )}
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className={`mt-1 block w-full border ${fieldErrors.title ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2`}
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Points</label>
-                <input
-                  type="number"
-                  value={points}
-                  onChange={(e) => setPoints(parseInt(e.target.value) || 0)}
-                  className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
-                  min="1"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700">
-                Description *
-                {fieldErrors.description && (
-                  <span className="text-red-600 ml-1">{fieldErrors.description}</span>
-                )}
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={6}
-                className={`mt-1 block w-full border ${fieldErrors.description ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2`}
-                placeholder="Problem statement..."
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Input Format *
-                  {fieldErrors.inputFormat && (
-                    <span className="text-red-600 ml-1">{fieldErrors.inputFormat}</span>
-                  )}
-                </label>
-                <textarea
-                  value={inputFormat}
-                  onChange={(e) => setInputFormat(e.target.value)}
-                  rows={3}
-                  className={`mt-1 block w-full border ${fieldErrors.inputFormat ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2`}
-                  placeholder="Describe the input format..."
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Output Format *
-                  {fieldErrors.outputFormat && (
-                    <span className="text-red-600 ml-1">{fieldErrors.outputFormat}</span>
-                  )}
-                </label>
-                <textarea
-                  value={outputFormat}
-                  onChange={(e) => setOutputFormat(e.target.value)}
-                  rows={3}
-                  className={`mt-1 block w-full border ${fieldErrors.outputFormat ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2`}
-                  placeholder="Describe the output format..."
-                />
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700">
-                Constraints *
-                {fieldErrors.constraints && (
-                  <span className="text-red-600 ml-1">{fieldErrors.constraints}</span>
-                )}
-              </label>
-              <textarea
-                value={constraints}
-                onChange={(e) => setConstraints(e.target.value)}
-                rows={3}
-                className={`mt-1 block w-full border ${fieldErrors.constraints ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2`}
-                placeholder="e.g., 1 ≤ N ≤ 10^5..."
-              />
-            </div>
-          </div>
-
-          <div className="bg-white rounded shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Sample Test Case</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Sample Input *
-                  {fieldErrors.sampleInput && (
-                    <span className="text-red-600 ml-1">{fieldErrors.sampleInput}</span>
-                  )}
-                </label>
-                <textarea
-                  value={sampleInput}
-                  onChange={(e) => setSampleInput(e.target.value)}
-                  rows={4}
-                  className={`mt-1 block w-full border ${fieldErrors.sampleInput ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2 font-mono text-sm`}
-                  placeholder="Enter sample input..."
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Sample Output *
-                  {fieldErrors.sampleOutput && (
-                    <span className="text-red-600 ml-1">{fieldErrors.sampleOutput}</span>
-                  )}
-                </label>
-                <textarea
-                  value={sampleOutput}
-                  onChange={(e) => setSampleOutput(e.target.value)}
-                  rows={4}
-                  className={`mt-1 block w-full border ${fieldErrors.sampleOutput ? 'border-red-500' : 'border-gray-300'} rounded px-3 py-2 font-mono text-sm`}
-                  placeholder="Enter expected output..."
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className={`bg-white rounded shadow p-6 ${fieldErrors.testCases ? 'border border-red-500' : ''}`}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">
-                Test Cases *
-                {fieldErrors.testCases && (
-                  <span className="text-red-600 ml-1 text-sm">{fieldErrors.testCases}</span>
-                )}
-              </h2>
-              <button
-                type="button"
-                onClick={addTestCase}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-              >
-                + Add Test Case
-              </button>
-            </div>
-
-            {testCases.length === 0 ? (
-              <div className="text-gray-500 text-center py-4">
-                No test cases yet. Click "Add Test Case" to add some.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {testCases.map((testCase, index) => (
-                  <div key={index} className="border rounded p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium">Test Case {index + 1}</h3>
-                      <div className="flex items-center space-x-2">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            checked={testCase.isHidden}
-                            onChange={(e) => updateTestCase(index, 'isHidden', e.target.checked)}
-                            className="mr-1"
-                          />
-                          Hidden
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => removeTestCase(index)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Input *</label>
-                        <textarea
-                          value={testCase.input}
-                          onChange={(e) => updateTestCase(index, 'input', e.target.value)}
-                          rows={3}
-                          className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
-                          placeholder="Test input..."
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Expected Output *</label>
-                        <textarea
-                          value={testCase.output}
-                          onChange={(e) => updateTestCase(index, 'output', e.target.value)}
-                          rows={3}
-                          className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
-                          placeholder="Expected output..."
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Solution Validator */}
-          <div className="bg-white rounded shadow p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Validate Solution</h3>
-              <button
-                type="button"
-                onClick={() => setShowValidator(!showValidator)}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-              >
-                {showValidator ? "Hide Validator" : "Show Validator"}
-              </button>
-            </div>
-            
-            {showValidator && (
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <SolutionValidator 
-                  testCases={testCases.filter(tc => tc.input.trim() && tc.output.trim())} 
-                  onValidationComplete={handleValidationComplete}
-                />
-              </div>
-            )}
-
-            {validationComplete && validationResults && (
-              <div className={`mt-4 p-4 rounded-lg ${validationResults.valid ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-                <h4 className="font-medium">
-                  {validationResults.valid 
-                    ? "All tests passed! Your solution works correctly." 
-                    : `${validationResults.passedTests}/${validationResults.totalTests} tests passed. Please fix your solution.`}
-                </h4>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={saving}
-              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-            >
-              Delete Question
-            </button>
-            
-            <div className="space-x-4">
-              <Link
-                href={`/admin/contests/${contestId}`}
-                className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                Cancel
-              </Link>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saving ? "Saving..." : "Update Question"}
-              </button>
-            </div>
-          </div>
-        </form>
+        <div className="text-center">Loading question...</div>
       </div>
     );
   }
+
+  if (!question) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto">
+        <div className="text-center text-red-600">Question not found</div>
+        <div className="text-center mt-4">
+          <Link href={`/admin/contests/${contestId}`} className="text-blue-600 hover:underline">
+            ← Back to Contest
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 max-w-4xl mx-auto">
+      <div className="mb-6">
+        <Link href={`/admin/contests/${contestId}`} className="text-blue-600 hover:underline">
+          ← Back to Contest
+        </Link>
+        <h1 className="text-2xl font-bold mt-2">Edit Question</h1>
+      </div>
+
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {success}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white rounded shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Question Details</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Title *</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Points</label>
+              <input
+                type="number"
+                value={points}
+                onChange={(e) => setPoints(parseInt(e.target.value) || 0)}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+                min="1"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700">Description *</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={6}
+              className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+              placeholder="Problem statement..."
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Input Format</label>
+              <textarea
+                value={inputFormat}
+                onChange={(e) => setInputFormat(e.target.value)}
+                rows={3}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Describe the input format..."
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Output Format</label>
+              <textarea
+                value={outputFormat}
+                onChange={(e) => setOutputFormat(e.target.value)}
+                rows={3}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+                placeholder="Describe the output format..."
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-gray-700">Constraints</label>
+            <textarea
+              value={constraints}
+              onChange={(e) => setConstraints(e.target.value)}
+              rows={3}
+              className="mt-1 block w-full border border-gray-300 rounded px-3 py-2"
+              placeholder="e.g., 1 ≤ N ≤ 10^5..."
+            />
+          </div>
+        </div>
+
+        <div className="bg-white rounded shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Sample Test Case</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Sample Input</label>
+              <textarea
+                value={sampleInput}
+                onChange={(e) => setSampleInput(e.target.value)}
+                rows={4}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
+                placeholder="Enter sample input..."
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Sample Output</label>
+              <textarea
+                value={sampleOutput}
+                onChange={(e) => setSampleOutput(e.target.value)}
+                rows={4}
+                className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
+                placeholder="Enter expected output..."
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold">Test Cases</h2>
+            <button
+              type="button"
+              onClick={addTestCase}
+              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            >
+              + Add Test Case
+            </button>
+          </div>
+
+          {testCases.length === 0 ? (
+            <div className="text-gray-500 text-center py-4">
+              No test cases yet. Click &quot;Add Test Case&quot; to add some.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {testCases.map((testCase, index) => (
+                <div key={index} className="border rounded p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-medium">Test Case {index + 1}</h3>
+                    <div className="flex items-center space-x-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={testCase.isHidden}
+                          onChange={(e) => updateTestCase(index, 'isHidden', e.target.checked)}
+                          className="mr-1"
+                        />
+                        Hidden
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeTestCase(index)}
+                        className="text-red-600 hover:text-red-800 text-sm"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Input</label>
+                      <textarea
+                        value={testCase.input}
+                        onChange={(e) => updateTestCase(index, 'input', e.target.value)}
+                        rows={3}
+                        className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
+                        placeholder="Test input..."
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Expected Output</label>
+                      <textarea
+                        value={testCase.output}
+                        onChange={(e) => updateTestCase(index, 'output', e.target.value)}
+                        rows={3}
+                        className="mt-1 block w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm"
+                        placeholder="Expected output..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-between">
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={saving}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+          >
+            Delete Question
+          </button>
+          
+          <div className="space-x-4">
+            <Link
+              href={`/admin/contests/${contestId}`}
+              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
+            >
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Update Question"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}

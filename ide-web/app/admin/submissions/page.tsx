@@ -56,7 +56,7 @@ export default function AdminSubmissionsPage() {
       });
       
       if (response.ok) {
-        const result = await response.json();
+        await response.json();
         alert('Submission rejudged successfully!');
         fetchSubmissions(); // Refresh the list
       } else {

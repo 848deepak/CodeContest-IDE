@@ -7,10 +7,10 @@ import Navigation from "@/components/Navigation";
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 const LANGUAGES = [
-  { label: "C++", value: "cpp" },
-  { label: "Python", value: "python" },
-  { label: "Java", value: "java" },
-  { label: "JavaScript", value: "javascript" },
+  { label: "C++", value: "cpp", judge0Id: 54 },
+  { label: "Python", value: "python", judge0Id: 71 },
+  { label: "Java", value: "java", judge0Id: 62 },
+  { label: "JavaScript", value: "javascript", judge0Id: 63 },
 ];
 
 const DEFAULT_CODE: Record<string, string> = {
@@ -59,21 +59,46 @@ export default function HomePage() {
   const [code, setCode] = useState(DEFAULT_CODE["cpp"]);
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [executionTime, setExecutionTime] = useState<string>("0.00s");
+  const [memoryUsed, setMemoryUsed] = useState<string>("0 MB");
+  const [judge0Connected, setJudge0Connected] = useState(false);
   const [typewriterText, setTypewriterText] = useState("");
   const fullText = "Build. Code. Compete.";
   
-  // Typewriter effect
+  // Typewriter effect - Enhanced with cursor management
   useEffect(() => {
     let index = 0;
+    setTypewriterText(""); // Start with empty text
+    
     const timer = setInterval(() => {
-      setTypewriterText(fullText.substring(0, index));
-      index++;
-      if (index > fullText.length) {
+      if (index <= fullText.length) {
+        const newText = fullText.substring(0, index);
+        setTypewriterText(newText);
+        console.log("Typewriter text:", `'${newText}'`, "length:", newText.length); // Debug log
+        index++;
+      } else {
         clearInterval(timer);
       }
-    }, 100);
+    }, 120); // Slightly slower for better visibility
     
     return () => clearInterval(timer);
+  }, [fullText]);
+
+  // Check Judge0 connection on component mount
+  useEffect(() => {
+    const checkJudge0Connection = async () => {
+      try {
+        const response = await fetch('/api/judge0/about');
+        if (response.ok) {
+          setJudge0Connected(true);
+        }
+      } catch (error) {
+        console.log('Judge0 API not available, will show instructions');
+        setJudge0Connected(false);
+      }
+    };
+
+    checkJudge0Connection();
   }, []);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -83,20 +108,116 @@ export default function HomePage() {
   };
 
   const handleRun = async () => {
+    if (!judge0Connected) {
+      setOutput(`🚨 Judge0 API Not Available
+
+The built-in code execution system is not working properly.
+Please check the server logs for more information.
+
+This should work automatically when deployed to Vercel! 🚀`);
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      // Simulate execution response
-      if (language === "cpp") {
-        setOutput("Welcome to CodeContest IDE!\n\nFeatures:\n- Real-time collaboration\n- Multi-language support\n- Advanced test cases");
-      } else if (language === "python") {
-        setOutput("Welcome to CodeContest IDE!\n\nFeatures:\n- Real-time collaboration\n- Multi-language support\n- Advanced test cases");
-      } else if (language === "java") {
-        setOutput("Welcome to CodeContest IDE!\n\nFeatures:\n- Real-time collaboration\n- Multi-language support\n- Advanced test cases");
-      } else {
-        setOutput("Welcome to CodeContest IDE!\n\nFeatures:\n- Real-time collaboration\n- Multi-language support\n- Advanced test cases");
+    setOutput("Submitting code to Judge0...");
+    
+    try {
+      // Get the Judge0 language ID for the current language
+      const currentLang = LANGUAGES.find(lang => lang.value === language);
+      const languageId = currentLang?.judge0Id || 71; // Default to Python
+      
+      // Submit code to Judge0 API
+      const submitResponse = await fetch('/api/judge0/submissions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_code: code,
+          language_id: languageId,
+          wait: true // Wait for execution to complete
+        })
+      });
+
+      if (!submitResponse.ok) {
+        throw new Error('Failed to submit code');
       }
+
+      const result = await submitResponse.json();
+      
+      // If we got a token instead of result, poll for result
+      let finalResult = result;
+      if (result.token && !result.status) {
+        setOutput(`Code submitted! Token: ${result.token}\nWaiting for execution...`);
+        
+        // Poll for result
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          
+          const resultResponse = await fetch(`/api/judge0/submissions/${result.token}`);
+          if (resultResponse.ok) {
+            finalResult = await resultResponse.json();
+            if (finalResult.status && finalResult.status.id >= 3) {
+              break;
+            }
+          }
+        }
+      }
+      
+      // Format output
+      let formattedOutput = "";
+      
+      // Add simulation notice for demo
+      formattedOutput += "🚀 Code Execution (Demo Mode)\n";
+      formattedOutput += "Note: This is a simulation for demo purposes.\n";
+      formattedOutput += "In production, this would use real Judge0 or similar service.\n\n";
+      
+      if (finalResult.stdout) {
+        formattedOutput += `📤 OUTPUT:\n${finalResult.stdout}\n`;
+      }
+      
+      if (finalResult.stderr) {
+        formattedOutput += `❌ ERRORS:\n${finalResult.stderr}\n`;
+      }
+      
+      if (finalResult.compile_output) {
+        formattedOutput += `🔧 COMPILE OUTPUT:\n${finalResult.compile_output}\n`;
+      }
+      
+      if (!finalResult.stdout && !finalResult.stderr && !finalResult.compile_output) {
+        formattedOutput += "No output generated.\n";
+      }
+      
+      // Add execution info
+      const statusDesc = finalResult.status?.description || 'Unknown';
+      const statusEmoji = finalResult.status?.id === 3 ? '✅' : finalResult.status?.id === 6 ? '❌' : '⚠️';
+      
+      formattedOutput += `\n${statusEmoji} STATUS: ${statusDesc}`;
+      
+      if (finalResult.token) {
+        formattedOutput += `\n🔗 Token: ${finalResult.token}`;
+      }
+      
+      setOutput(formattedOutput);
+      
+      // Update execution metrics
+      setExecutionTime(finalResult.time ? `${finalResult.time}s` : '0.00s');
+      setMemoryUsed(finalResult.memory ? `${(finalResult.memory / 1024).toFixed(2)} MB` : '0.00 MB');
+      
+    } catch (err) {
+      console.error('Execution error:', err);
+      setOutput(`❌ EXECUTION ERROR: ${err instanceof Error ? err.message : 'Unknown error'}
+
+🔧 Troubleshooting:
+1. Make sure Judge0 mock server is running:
+   cd "/Users/deepakpandey/Coding /Projects/judge0"
+   node mock-judge0-server.js
+
+2. Check if http://localhost:3001 is accessible
+3. Try refreshing the page`);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -109,8 +230,10 @@ export default function HomePage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-10">
             <div className="w-full md:w-1/2 space-y-6">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight">
-                <span className="bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">{typewriterText}</span>
-                <span className="animate-blink">|</span>
+                <span className="typewriter-gradient">
+                  {typewriterText || "\u00a0"}
+                </span>
+                <span className="animate-blink"></span>
               </h1>
               <p className="text-xl md:text-2xl text-gray-300">
                 A modern, powerful online IDE and contest platform for developers and competitive programmers
@@ -145,7 +268,21 @@ export default function HomePage() {
                       readOnly: false,
                       fontSize: 14, 
                       minimap: { enabled: false },
-                      scrollBeyondLastLine: false
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      cursorStyle: 'block',
+                      cursorBlinking: 'solid',
+                      renderLineHighlight: 'all',
+                      selectOnLineNumbers: true,
+                      mouseWheelZoom: true,
+                      contextmenu: true,
+                      cursorSmoothCaretAnimation: 'off',
+                      cursorWidth: 3,
+                      lineNumbers: 'on',
+                      glyphMargin: true,
+                      folding: true,
+                      lineDecorationsWidth: 10,
+                      lineNumbersMinChars: 3
                     }}
                   />
                 </div>
@@ -193,41 +330,69 @@ export default function HomePage() {
                   options={{ 
                     fontSize: 14, 
                     minimap: { enabled: false },
-                    scrollBeyondLastLine: false
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    cursorStyle: 'block',
+                    cursorBlinking: 'solid',
+                    renderLineHighlight: 'all',
+                    selectOnLineNumbers: true,
+                    mouseWheelZoom: true,
+                    contextmenu: true,
+                    cursorSmoothCaretAnimation: 'off',
+                    cursorWidth: 3,
+                    lineNumbers: 'on',
+                    glyphMargin: true,
+                    folding: true,
+                    lineDecorationsWidth: 10,
+                    lineNumbersMinChars: 3
                   }}
                 />
               </div>
               <div className="p-3 bg-gray-900 border-t border-gray-800">
                 <button
-                  className="w-full py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 shadow-md transition-colors duration-200"
+                  className={`w-full py-2 rounded-lg font-semibold shadow-md transition-colors duration-200 ${
+                    judge0Connected 
+                      ? 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50' 
+                      : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  }`}
                   onClick={handleRun}
                   disabled={loading}
                 >
-                  {loading ? "Running..." : "Run Code"}
+                  {loading ? "Running..." : judge0Connected ? "Run Code" : "Run Code (Start Judge0 First)"}
                 </button>
               </div>
             </div>
             
             <div className="lg:col-span-2 bg-gray-900 rounded-xl overflow-hidden border border-gray-800 shadow-lg">
-              <div className="p-3 bg-gray-900 border-b border-gray-800">
+              <div className="p-3 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
                 <h3 className="text-sm font-medium text-gray-300">Output</h3>
+                <div className="flex items-center space-x-2">
+                  <div className={`w-2 h-2 rounded-full ${judge0Connected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span className="text-xs text-gray-400">
+                    {judge0Connected ? 'Judge0 Connected' : 'Judge0 Disconnected'}
+                  </span>
+                </div>
               </div>
               <div className="h-[350px] overflow-auto p-4 font-mono bg-black text-green-400 text-sm">
                 {loading ? (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="flex flex-col items-center justify-center h-full space-y-4">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-400"></div>
+                    <div className="text-gray-400">Executing code with Judge0...</div>
                   </div>
                 ) : output ? (
                   <pre className="whitespace-pre-wrap">{output}</pre>
                 ) : (
-                  <div className="text-gray-500 h-full flex items-center justify-center">
-                    Click "Run Code" to see the output
+                  <div className="text-gray-500 h-full flex flex-col items-center justify-center space-y-2">
+                    <div>Click &ldquo;Run Code&rdquo; to see the output</div>
+                    <div className="text-xs">
+                      {judge0Connected ? '✅ Ready to execute' : '⚠️ Start Judge0 server first'}
+                    </div>
                   </div>
                 )}
               </div>
               <div className="p-3 bg-gray-900 border-t border-gray-800 text-right">
                 <div className="text-xs text-gray-400">
-                  Memory: 0.2 MB | Time: 0.01s
+                  Memory: {memoryUsed} | Time: {executionTime}
                 </div>
               </div>
             </div>
@@ -264,7 +429,7 @@ export default function HomePage() {
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-lg">
               <div className="text-yellow-400 text-2xl mb-4">★★★★★</div>
               <p className="text-gray-300 mb-6">
-                "The best online IDE I've used. Perfect for coding competitions and collaborative work."
+                &ldquo;The best online IDE I&apos;ve used. Perfect for coding competitions and collaborative work.&rdquo;
               </p>
               <div className="font-semibold">Alex Johnson</div>
               <div className="text-gray-400 text-sm">Software Engineer</div>
@@ -273,7 +438,7 @@ export default function HomePage() {
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-lg">
               <div className="text-yellow-400 text-2xl mb-4">★★★★★</div>
               <p className="text-gray-300 mb-6">
-                "CodeContest IDE made running our university programming competitions so much easier!"
+                &ldquo;CodeContest IDE made running our university programming competitions so much easier!&rdquo;
               </p>
               <div className="font-semibold">Dr. Sarah Chen</div>
               <div className="text-gray-400 text-sm">CS Professor</div>
@@ -282,7 +447,7 @@ export default function HomePage() {
             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-lg">
               <div className="text-yellow-400 text-2xl mb-4">★★★★★</div>
               <p className="text-gray-300 mb-6">
-                "The real-time collaboration features are game-changing for team coding interviews."
+                &ldquo;The real-time collaboration features are game-changing for team coding interviews.&rdquo;
               </p>
               <div className="font-semibold">Michael Rodriguez</div>
               <div className="text-gray-400 text-sm">Tech Lead</div>

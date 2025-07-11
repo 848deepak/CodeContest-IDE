@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IDE Web Application
 
-## Getting Started
+A modern online IDE with contest management system built with Next.js and Supabase.
 
-First, run the development server:
+## Features
 
+- **Multi-language Code Editor**: Monaco Editor with syntax highlighting
+- **Contest System**: Create and manage coding contests
+- **User Management**: Authentication and user profiles
+- **Admin Dashboard**: Manage contests, users, and submissions
+- **Judge System**: Code execution and validation
+- **Database**: Full contest and user data management
+
+## Quick Deployment to Vercel
+
+### 1. Install Vercel CLI
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install -g vercel
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Build and Deploy
+```bash
+# Install dependencies
+npm install
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Build the project
+npm run build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Deploy to Vercel
+vercel --prod
+```
 
-## Learn More
+### 3. Set Environment Variables in Vercel Dashboard
 
-To learn more about Next.js, take a look at the following resources:
+```env
+DATABASE_URL=your_supabase_connection_string
+NEXTAUTH_SECRET=your_random_secret_key
+NEXTAUTH_URL=https://your-app.vercel.app
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. Database Setup
+```bash
+# Push database schema
+npx prisma db push
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Seed initial data
+npx prisma db seed
+```
 
-## Deploy on Vercel
+## Local Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# Install dependencies
+npm install
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Start development server
+npm run dev
+
+# Open http://localhost:3000
+```
+
+## Environment Variables
+
+Create a `.env.local` file:
+
+```env
+DATABASE_URL="your_supabase_connection_string"
+NEXTAUTH_SECRET="your_secret_key"
+NEXTAUTH_URL="http://localhost:3000"
+```
+
+## Tech Stack
+
+- **Frontend**: Next.js 15, React, Tailwind CSS
+- **Editor**: Monaco Editor
+- **Database**: Supabase (PostgreSQL)
+- **ORM**: Prisma
+- **Authentication**: NextAuth.js
+- **Deployment**: Vercel
+
+---
+
+Ready to deploy! Just run `vercel --prod` and your IDE will be live.

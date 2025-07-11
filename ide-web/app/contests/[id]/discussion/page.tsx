@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 
 interface User {
@@ -42,13 +42,7 @@ export default function DiscussionPage() {
   // Mock current user - in real app, get from auth context
   const currentUser = { id: '1', username: 'testuser', name: 'Test User' };
 
-  useEffect(() => {
-    if (contestId) {
-      fetchDiscussions();
-    }
-  }, [contestId]);
-
-  const fetchDiscussions = async () => {
+  const fetchDiscussions = useCallback(async () => {
     try {
       const response = await fetch(`/api/discussions?contestId=${contestId}`);
       if (response.ok) {
@@ -60,7 +54,13 @@ export default function DiscussionPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [contestId]);
+
+  useEffect(() => {
+    if (contestId) {
+      fetchDiscussions();
+    }
+  }, [contestId, fetchDiscussions]);
 
   const handleCreateDiscussion = async (e: React.FormEvent) => {
     e.preventDefault();

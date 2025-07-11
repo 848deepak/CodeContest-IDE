@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy": "./deploy-to-vercel.sh",
+    "test:api": "curl http://localhost:3000/api/judge0/about"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -14,7 +16,9 @@
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
     "@prisma/client": "^6.11.1",
+    "@supabase/supabase-js": "^2.50.4",
     "@tensorflow-models/blazeface": "^0.1.0",
+    "@tensorflow-models/face-landmarks-detection": "^1.0.6",
     "@tensorflow/tfjs": "^4.22.0",
     "dockerode": "^4.0.7",
     "next": "15.3.5",

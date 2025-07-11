@@ -18,7 +18,19 @@ export async function GET(
     });
 
     // Calculate ranks
-    const rankedLeaderboard = leaderboard.map((entry: any, index: number) => ({
+    interface LeaderboardEntry {
+      id: string;
+      contestId: string;
+      createdAt: Date;
+      updatedAt: Date;
+      userId: string;
+      username: string;
+      totalScore: number;
+      lastSubmissionTime: Date | null;
+      rank: number | null;
+    }
+
+    const rankedLeaderboard = leaderboard.map((entry: LeaderboardEntry, index: number) => ({
       ...entry,
       rank: index + 1
     }));

@@ -1,12 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+
+interface Submission {
+  id: string;
+  userId: string;
+  questionId: string;
+  code: string;
+  language: string;
+  contestId: string;
+  status: string;
+  score: number;
+  totalTests: number;
+  passedTests: number;
+  runtime: number | null;
+  memory: number | null;
+  submittedAt: Date;
+  question?: {
+    id: string;
+    points: number;
+    testCases: Array<{
+      id: string;
+      input: string;
+      output: string;
+      isHidden: boolean;
+    }>;
+  };
+}
+
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const submissionId = parseInt(params.id);
+    const params = await context.params;
+    const submissionId = params.id; // Keep as string since Prisma uses string IDs
     
     // Get the submission details
     const submission = await prisma.submission.findUnique({
@@ -119,7 +148,7 @@ export async function POST(
       const questionScores = new Map();
       let earliestSubmission = existingEntry.lastSubmissionTime;
 
-      userSubmissions.forEach((sub: any) => {
+      userSubmissions.forEach((sub: Submission) => {
         const questionId = sub.questionId;
         const currentScore = questionScores.get(questionId) || 0;
         if (sub.score > currentScore) {

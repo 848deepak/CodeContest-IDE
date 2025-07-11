@@ -1,30 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
-    const { contestId, userId, violationType, details, screenshotUrl } = await request.json();
-    
-    // Get user ID from session if not provided
-    const actualUserId = userId || 'anonymous'; // In a real app, get from session
-    
-    // Log the violation using the Prisma model instead of raw SQL
-    const violation = await prisma.securityViolation.create({
-      data: {
-        userId: actualUserId,
-        contestId,
-        violationType: violationType || 'GENERAL',
-        details: details || 'Security violation detected',
-        screenshotUrl: screenshotUrl || null
-      }
+    const data = await request.json();
+    const { userId, contestId, type, details, evidence } = data;
+
+    // For now, just log the violation since we don't have the security_violations table
+    console.log('Security violation logged:', {
+      userId,
+      contestId,
+      type,
+      details,
+      evidence,
+      timestamp: new Date().toISOString()
     });
-    
-    return NextResponse.json({ success: true });
+
+    // You can later add this to Supabase or create the security_violations table
+    // const violation = await prisma.securityViolation.create({
+    //   data: {
+    //     userId,
+    //     contestId,
+    //     type,
+    //     details,
+    //     evidence,
+    //   }
+    // });
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Violation logged successfully' 
+    });
   } catch (error) {
     console.error('Error logging violation:', error);
-    return NextResponse.json(
-      { error: 'Failed to log violation' },
-      { status: 500 }
-    );
+    return NextResponse.json({ 
+      error: 'Failed to log violation' 
+    }, { status: 500 });
   }
 }

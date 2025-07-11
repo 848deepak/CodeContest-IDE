@@ -1,10 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 
-export default function AuthPage() {
+// Force dynamic rendering
+export const dynamic = 'force-dynamic';
+
+function AuthPageComponent() {
+  const [mounted, setMounted] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
     username: '',
@@ -16,6 +21,14 @@ export default function AuthPage() {
 
   const { login, register } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div>Loading...</div>;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +54,7 @@ export default function AuthPage() {
       } else {
         setError(isLogin ? 'User not found' : 'Registration failed');
       }
-    } catch (error) {
+    } catch {
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);

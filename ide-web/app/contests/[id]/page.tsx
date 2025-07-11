@@ -1,8 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import SecureContestView from "@/components/SecureContestView";
 
 interface Question {
   id: string;
@@ -16,10 +14,6 @@ interface Contest {
   startTime: string;
   endTime: string;
   questions: Question[];
-  requireFullScreen?: boolean;
-  disableCopyPaste?: boolean;
-  preventTabSwitching?: boolean;
-  requireWebcamMonitoring?: boolean;
 }
 
 function getStatus(contest: Contest) {
@@ -50,21 +44,10 @@ export default function ContestDetailPage({
 }: { 
   params: Promise<{ id: string }> 
 }) {
-  const router = useRouter();
   const [contest, setContest] = useState<Contest | null>(null);
   const [loading, setLoading] = useState(true);
   const [contestId, setContestId] = useState<string>("");
   const [timeRemaining, setTimeRemaining] = useState<string>("");
-  const [securitySettings, setSecuritySettings] = useState({
-    requireFullScreen: true,
-    disableCopyPaste: true,
-    preventTabSwitching: true,
-    requireWebcamMonitoring: false,
-  });
-  const [isParticipating, setIsParticipating] = useState(false);
-  const [showingInstructions, setShowingInstructions] = useState(true);
-  const [endConfirmation, setEndConfirmation] = useState("");
-  const [showEndDialog, setShowEndDialog] = useState(false);
 
   useEffect(() => {
     async function getParams() {
@@ -84,14 +67,6 @@ export default function ContestDetailPage({
         if (res.ok) {
           const data = await res.json();
           setContest(data);
-          
-          // Set security settings from contest data or use defaults
-          setSecuritySettings({
-            requireFullScreen: data.requireFullScreen ?? true,
-            disableCopyPaste: data.disableCopyPaste ?? true,
-            preventTabSwitching: data.preventTabSwitching ?? true,
-            requireWebcamMonitoring: data.requireWebcamMonitoring ?? false
-          });
         }
       } catch (error) {
         console.error('Error fetching contest:', error);
@@ -114,342 +89,22 @@ export default function ContestDetailPage({
     return () => clearInterval(timer);
   }, [contest]);
 
-  // Disable browser back button after participation starts
-  useEffect(() => {
-    if (isParticipating) {
-      // Push current state to history to ensure popstate can be triggered
-      window.history.pushState(null, '', window.location.href);
-      
-      // Handle popstate (back/forward button) events
-      const handlePopState = () => {
-        // Push again to prevent navigation
-        window.history.pushState(null, '', window.location.href);
-        
-        // Also alert the user that back navigation is disabled
-        alert('Back navigation is disabled during the contest');
-      };
-      
-      // Add event listener
-      window.addEventListener('popstate', handlePopState);
-      
-      // Also override browser shortcut keys to ensure users can't use shortcuts like Alt+Left
-      const preventNavKeys = (e: KeyboardEvent) => {
-        if (
-          (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) || // Alt+Left/Right for browser navigation
-          (e.ctrlKey && e.key === '[') || // Ctrl+[ sometimes works as back in some browsers
-          (e.key === 'Backspace' && document.activeElement === document.body) // Backspace when no input is focused
-        ) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      };
-      
-      window.addEventListener('keydown', preventNavKeys, true);
-      
-      // Clean up
-      return () => {
-        window.removeEventListener('popstate', handlePopState);
-        window.removeEventListener('keydown', preventNavKeys, true);
-      };
-    }
-  }, [isParticipating]);
-
-  const handleParticipateClick = () => {
-    // Push state before entering participation mode to ensure back button is disabled
-    window.history.pushState(null, '', window.location.href);
-    setIsParticipating(true);
-    setShowingInstructions(false); // Now show the actual contest
-  };
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-gray-500">Loading contest...</div>
+    </div>
+  );
   
-  const handleFinishContest = () => {
-    setShowEndDialog(true);
-  };
-  
-  // Ref to hold the function that allows navigation at end
-  const allowEndNavigationRef = React.useRef<(() => void) | undefined>(undefined);
-  
-  const confirmEndContest = () => {
-    if (endConfirmation.toLowerCase() === 'end') {
-      // Close the dialog
-      setShowEndDialog(false);
-      setEndConfirmation('');
-      
-      // Allow navigation through the SecureContestView component
-      if (allowEndNavigationRef.current) {
-        allowEndNavigationRef.current();
-        
-        // Then redirect to submission or finish page
-        setTimeout(() => {
-          router.push(`/contests/${contestId}/submit`);
-        }, 100);
-      }
-    } else {
-      alert('Please type "end" to confirm');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Loading contest...</div>
-      </div>
-    );
-  }
-  
-  if (!contest) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">Contest not found.</div>
-      </div>
-    );
-  }
+  if (!contest) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-gray-500">Contest not found.</div>
+    </div>
+  );
 
   const status = getStatus(contest);
 
-  // When participating in an ongoing contest
-  if (status === "ongoing" && isParticipating) {
-    // If showing instructions first, we don't activate security measures yet
-    if (showingInstructions) {
-      return (
-        <div className="min-h-screen bg-gray-100">
-          <div className="bg-white shadow-sm border-b">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16">
-                <div className="flex items-center space-x-4">
-                  <Link href="/contests" className="text-blue-600 hover:text-blue-800">
-                    ← Back to Contests
-                  </Link>
-                  <h1 className="text-xl font-semibold text-gray-900">{contest.title}</h1>
-                </div>
-                <div className="flex items-center space-x-4">
-                  {timeRemaining && (
-                    <div className="bg-red-100 text-red-800 px-3 py-1 rounded font-mono">
-                      {timeRemaining}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-gray-900">{contest.title} - Instructions</h2>
-                <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                  Ongoing
-                </div>
-              </div>
-              
-              <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
-                <div>
-                  <span className="font-medium">Start Time:</span> {new Date(contest.startTime).toLocaleString()}
-                </div>
-                <div>
-                  <span className="font-medium">End Time:</span> {new Date(contest.endTime).toLocaleString()}
-                </div>
-                <div>
-                  <span className="font-medium">Problems:</span> {contest.questions.length}
-                </div>
-                <div>
-                  <span className="font-medium">Total Points:</span> {contest.questions.reduce((sum, q) => sum + q.points, 0)}
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Contest Instructions</h3>
-                <ul className="list-disc pl-5 text-blue-700 mb-4">
-                  <li className="mb-2">This contest contains {contest.questions.length} problem(s) worth a total of {contest.questions.reduce((sum, q) => sum + q.points, 0)} points.</li>
-                  <li className="mb-2">You have until {new Date(contest.endTime).toLocaleString()} to complete the contest.</li>
-                  <li className="mb-2">Read each problem carefully before attempting to solve it.</li>
-                  <li className="mb-2">You can submit multiple times for each problem.</li>
-                </ul>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                <h3 className="text-lg font-semibold text-yellow-800 mb-2">Contest Security Notice</h3>
-                <p className="text-yellow-700 mb-3">
-                  When you click "Participate Now", the following security measures will be activated:
-                </p>
-                <ul className="list-disc pl-5 text-yellow-700 mb-4">
-                  {securitySettings.requireFullScreen && (
-                    <li className="mb-1">Full-screen mode will be required for the duration of the contest</li>
-                  )}
-                  {securitySettings.disableCopyPaste && (
-                    <li className="mb-1">Copy and paste functionality will be disabled to prevent plagiarism</li>
-                  )}
-                  {securitySettings.preventTabSwitching && (
-                    <li className="mb-1">Tab switching and browser navigation will be monitored</li>
-                  )}
-                  {securitySettings.requireWebcamMonitoring && (
-                    <li className="mb-1 font-medium">Your webcam will be used to monitor your participation and detect potential cheating</li>
-                  )}
-                  <li>Multiple security violations may result in disqualification</li>
-                  <li className="font-bold">To end the contest, you must type "end" in the confirmation dialog</li>
-                </ul>
-              </div>
-              
-              <button
-                onClick={handleParticipateClick}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300"
-              >
-                Participate Now
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    
-    // Full participation mode with security measures
-    return (
-      <>
-        {/* End contest dialog - Placed outside SecureContestView to avoid permission issues */}
-        {showEndDialog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-lg w-full">
-              <h2 className="text-2xl font-bold text-red-600 mb-4">End Contest Confirmation</h2>
-              <p className="mb-4">
-                Are you sure you want to end the contest? This action cannot be undone.
-              </p>
-              <p className="mb-6 font-semibold">
-                Type "end" in the box below to confirm:
-              </p>
-              <input
-                type="text"
-                value={endConfirmation}
-                onChange={(e) => setEndConfirmation(e.target.value)}
-                className="w-full border border-gray-300 rounded px-4 py-2 mb-4"
-                placeholder="Type 'end' here"
-                // Autofocus to make it easier to type
-                autoFocus
-              />
-              <div className="flex justify-end space-x-4">
-                <button
-                  onClick={() => {
-                    setShowEndDialog(false);
-                    setEndConfirmation('');
-                  }}
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmEndContest}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
-                  disabled={endConfirmation.toLowerCase() !== 'end'}
-                >
-                  Confirm End Contest
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <SecureContestView 
-          contestId={contest.id}
-          requireFullScreen={securitySettings.requireFullScreen}
-          disableCopyPaste={securitySettings.disableCopyPaste}
-          preventTabSwitching={securitySettings.preventTabSwitching}
-          requireWebcamMonitoring={securitySettings.requireWebcamMonitoring}
-          onAllowEndRef={allowEndNavigationRef}
-        >
-          <div className="min-h-screen bg-gray-100">
-            <div className="bg-white shadow-sm border-b">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-16">
-                  <div className="flex items-center space-x-4">
-                    <h1 className="text-xl font-semibold text-gray-900">{contest.title}</h1>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    {timeRemaining && (
-                      <div className="bg-red-100 text-red-800 px-3 py-1 rounded font-mono">
-                        {timeRemaining}
-                      </div>
-                    )}
-                    {/* No navigation links allowed during participation */}
-                    <div className="text-gray-600">
-                      Participation Mode
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-gray-900">{contest.title}</h2>
-                  <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                    Ongoing
-                  </div>
-                </div>
-                
-                <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-600">
-                  <div>
-                    <span className="font-medium">Start Time:</span> {new Date(contest.startTime).toLocaleString()}
-                  </div>
-                  <div>
-                    <span className="font-medium">End Time:</span> {new Date(contest.endTime).toLocaleString()}
-                  </div>
-                  <div>
-                    <span className="font-medium">Problems:</span> {contest.questions.length}
-                  </div>
-                  <div>
-                    <span className="font-medium">Total Points:</span> {contest.questions.reduce((sum, q) => sum + q.points, 0)}
-                  </div>
-                </div>
-                
-                <div className="mt-4 text-right">
-                  <button
-                    onClick={handleFinishContest}
-                    className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-                  >
-                    Finish Contest
-                  </button>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-4">Problems</h3>
-                <div className="space-y-3">
-                  {contest.questions.map((question, index) => (
-                    <div 
-                      key={question.id} 
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
-                          {String.fromCharCode(65 + index)}
-                        </div>
-                        <div>
-                          <div className="font-medium text-gray-900">{question.title}</div>
-                          <div className="text-sm text-gray-600">{question.points} points</div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center space-x-3">
-                        <Link
-                          href={`/contests/${contest.id}/problems/${question.id}`}
-                          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-                        >
-                          Solve
-                        </Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </SecureContestView>
-      </>
-    );
-  }
-
-  // For non-participating view (upcoming, past, or not yet participating in ongoing)
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -460,7 +115,7 @@ export default function ContestDetailPage({
               <h1 className="text-xl font-semibold text-gray-900">{contest.title}</h1>
             </div>
             <div className="flex items-center space-x-4">
-              {timeRemaining && status === "ongoing" && (
+              {status === "ongoing" && timeRemaining && (
                 <div className="bg-red-100 text-red-800 px-3 py-1 rounded font-mono">
                   {timeRemaining}
                 </div>
@@ -481,21 +136,21 @@ export default function ContestDetailPage({
           </div>
         </div>
       </div>
-      
+
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold text-gray-900">{contest.title}</h2>
             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-              status === "upcoming" ? "bg-yellow-100 text-yellow-800" : 
-              status === "ongoing" ? "bg-green-100 text-green-800" : 
+              status === "ongoing" ? "bg-green-100 text-green-800" :
+              status === "upcoming" ? "bg-yellow-100 text-yellow-800" :
               "bg-gray-100 text-gray-800"
             }`}>
               {status.charAt(0).toUpperCase() + status.slice(1)}
             </div>
           </div>
           
-          <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
+          <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-600">
             <div>
               <span className="font-medium">Start Time:</span> {new Date(contest.startTime).toLocaleString()}
             </div>
@@ -509,31 +164,16 @@ export default function ContestDetailPage({
               <span className="font-medium">Total Points:</span> {contest.questions.reduce((sum, q) => sum + q.points, 0)}
             </div>
           </div>
-          
-          {status === "ongoing" && (
-            <>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                <h3 className="text-lg font-semibold text-blue-800 mb-2">Ready to Participate?</h3>
-                <p className="text-blue-700 mb-3">
-                  Click the button below to participate in this contest. You'll first be shown instructions
-                  and security information before the actual contest starts.
-                </p>
-              </div>
-              
-              <button
-                onClick={() => setIsParticipating(true)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-300"
-              >
-                Participate
-              </button>
-            </>
-          )}
         </div>
 
-        {status !== "upcoming" && !isParticipating && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-lg font-semibold mb-4">Problems Overview</h3>
-            
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h3 className="text-lg font-semibold mb-4">Problems</h3>
+          
+          {status === "upcoming" ? (
+            <div className="text-center py-8 text-gray-500">
+              Contest has not started yet. Problems will be visible when the contest begins.
+            </div>
+          ) : (
             <div className="space-y-3">
               {contest.questions.map((question, index) => (
                 <div 
@@ -550,25 +190,28 @@ export default function ContestDetailPage({
                     </div>
                   </div>
                   
-                  {status === "ongoing" ? (
-                    <div className="text-sm text-gray-500">
-                      Participate to view problems
-                    </div>
-                  ) : (
-                    <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-3">
+                    {status === "ongoing" ? (
                       <Link
                         href={`/contests/${contest.id}/problems/${question.id}`}
-                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                      >
+                        Solve
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/contests/${contest.id}/problems/${question.id}`}
+                        className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors"
                       >
                         View
                       </Link>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

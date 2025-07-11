@@ -8,7 +8,10 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const whereClause = contestId ? { contestId: parseInt(contestId) } : {};
+    const whereClause: { contestId?: string } = {};
+    if (contestId) {
+      whereClause.contestId = contestId;
+    }
 
     const submissions = await prisma.submission.findMany({
       where: whereClause,

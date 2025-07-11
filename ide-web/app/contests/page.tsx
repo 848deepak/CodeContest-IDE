@@ -58,36 +58,6 @@ export default function ContestListPage() {
       setLoading(false);
     }
     fetchContests();
-    
-    // Check if user is coming from a contest submission
-    // This prevents direct navigation back to a contest after submitting
-    const fromSubmit = sessionStorage.getItem('contestSubmitted');
-    const contestId = sessionStorage.getItem('lastContestId');
-    
-    // If they're coming from a submission, block back navigation
-    if (fromSubmit && contestId) {
-      // Prevent back navigation to the specific contest
-      const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-        const url = window.location.href;
-        if (url.includes(`/contests/${contestId}`)) {
-          event.preventDefault();
-          event.returnValue = '';
-          return '';
-        }
-      };
-      
-      window.addEventListener('beforeunload', handleBeforeUnload);
-      
-      // Clear the navigation flags after 30 minutes
-      setTimeout(() => {
-        sessionStorage.removeItem('contestSubmitted');
-        sessionStorage.removeItem('lastContestId');
-      }, 30 * 60 * 1000);
-      
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-      };
-    }
   }, []);
 
   // Update countdown timers

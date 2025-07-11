@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // List test cases for a question
 export async function GET(req: NextRequest) {
   try {

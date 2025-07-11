@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-const JUDGE0_URL = "https://judge0-ce.p.rapidapi.com";
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || "9d17720c32msh8a66fef643d22d3p1eaa26jsn9e13b45d368a";
+/* eslint-disable @typescript-eslint/no-explicit-any, prefer-const */
+
+// Use local Judge0 instance instead of external API
+const JUDGE0_URL = process.env.JUDGE0_URL || "http://localhost:3000";
 
 const LANGUAGE_MAP: Record<string, number> = {
   python: 71, // Python 3.8.1
@@ -16,9 +18,7 @@ async function judge0Request(path: string, options: RequestInit) {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-RapidAPI-Key": RAPIDAPI_KEY,
-      "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
-      ...(options.headers || {}),
+      ...options.headers
     },
   });
 }
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
 
     // Execute code against all test cases
     let passedTests = 0;
-    let totalTests = question.testCases.length;
+    const totalTests = question.testCases.length;
     let status = "ACCEPTED";
     let totalRuntime = 0;
     let totalMemory = 0;
@@ -217,15 +217,6 @@ export async function POST(req: NextRequest) {
         passedTests,
         runtime: totalRuntime / totalTests || 0,
         memory: totalMemory / totalTests || 0,
-        user: {
-          connect: { id: user.id }
-        },
-        contest: {
-          connect: { id: contestId }
-        },
-        question: {
-          connect: { id: questionId }
-        }
       }
     });
 

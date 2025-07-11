@@ -31,6 +31,35 @@ interface PlagiarismReport {
   results: PlagiarismResult[];
 }
 
+interface ComparisonData {
+  submission1: {
+    id: string;
+    code: string;
+    language: string;
+    submittedAt: string;
+    user: {
+      username: string;
+      name: string;
+    };
+  };
+  submission2: {
+    id: string;
+    code: string;
+    language: string;
+    submittedAt: string;
+    user: {
+      username: string;
+      name: string;
+    };
+  };
+  similarity: {
+    overall: number;
+    jaccard: number;
+    levenshtein: number;
+  };
+  method: string;
+}
+
 export default function PlagiarismCheckPage() {
   const [contests, setContests] = useState<Contest[]>([]);
   const [selectedContest, setSelectedContest] = useState<string>('');
@@ -38,7 +67,7 @@ export default function PlagiarismCheckPage() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<PlagiarismReport | null>(null);
   const [comparing, setComparing] = useState<{ sub1: string; sub2: string } | null>(null);
-  const [comparisonData, setComparisonData] = useState<any>(null);
+  const [comparisonData, setComparisonData] = useState<ComparisonData | null>(null);
 
   useEffect(() => {
     fetchContests();

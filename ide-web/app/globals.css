@@ -390,18 +390,56 @@ tr:hover {
   background-color: #333333 !important;
 }
 
-/* Animation for typewriter cursor */
+/* Typewriter text gradient fix - Professional styling */
+.typewriter-gradient {
+  background: linear-gradient(90deg, #60a5fa 0%, #a855f7 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  color: transparent !important;
+  display: inline-block !important;
+  /* Ensure minimum visibility */
+  min-height: 1.2em !important;
+  line-height: 1.2 !important;
+}
+
+/* Fallback for gradient text - Enhanced */
+@supports not (-webkit-background-clip: text) {
+  .typewriter-gradient {
+    color: #60a5fa !important;
+    -webkit-text-fill-color: #60a5fa !important;
+    background: none !important;
+  }
+}
+
+/* Ensure text is always visible even when empty */
+.typewriter-gradient:empty::before {
+  content: "\00a0"; /* Non-breaking space */
+  opacity: 0;
+}
+
+/* Animation for typewriter cursor - Fixed blinking */
 @keyframes blink {
-  0%, 100% {
+  0% {
     opacity: 1;
   }
   50% {
     opacity: 0;
   }
+  100% {
+    opacity: 1;
+  }
 }
 
 .animate-blink {
-  animation: blink 1s step-end infinite;
+  display: inline-block !important;
+  width: 3px !important;
+  height: 1.2em !important;
+  background-color: #ffffff !important;
+  margin-left: 4px !important;
+  animation: blink 1s infinite !important;
+  vertical-align: top !important;
+  border-radius: 1px !important;
 }
 
 /* Hero section gradient */
@@ -484,4 +522,63 @@ tr:hover {
 nav, .navbar, .navigation {
   background-color: #000000 !important;
   border-bottom: 1px solid #333333 !important;
+}
+
+/* Monaco Editor Cursor Visibility Fix - Enhanced */
+.monaco-editor .cursor,
+.monaco-editor .cursors-layer .cursor,
+.monaco-editor .view-lines .cursor {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 1000 !important;
+  background-color: #ffffff !important;
+  border-left: 2px solid #ffffff !important;
+  width: 2px !important;
+  height: 100% !important;
+}
+
+/* Force cursor on specific Monaco themes */
+.monaco-editor.vs-dark .cursor,
+.monaco-editor.vs-dark .cursors-layer .cursor {
+  background-color: #ffffff !important;
+  border-left: 2px solid #ffffff !important;
+  opacity: 1 !important;
+  display: block !important;
+}
+
+/* Cursor blink animation - more aggressive */
+.monaco-editor .cursor.cursor-blink,
+.monaco-editor.vs-dark .cursor.cursor-blink {
+  animation: monaco-cursor-blink 1s linear infinite !important;
+  animation-fill-mode: both !important;
+}
+
+@keyframes monaco-cursor-blink {
+  0%, 50% { 
+    opacity: 1 !important; 
+    visibility: visible !important;
+  }
+  51%, 100% { 
+    opacity: 0.1 !important; 
+    visibility: visible !important;
+  }
+}
+
+/* Focus states for better cursor visibility */
+.monaco-editor.focused .cursor,
+.monaco-editor:focus .cursor,
+.monaco-editor:focus-within .cursor {
+  opacity: 1 !important;
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Override any Monaco CSS that might hide cursor */
+.monaco-editor * {
+  cursor: text !important;
+}
+
+.monaco-editor .view-lines {
+  cursor: text !important;
 }

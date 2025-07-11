@@ -32,11 +32,27 @@ interface Contest {
   endTime: string;
 }
 
+interface TestResult {
+  passed: boolean;
+  isHidden: boolean;
+  expected?: string;
+  output?: string;
+}
+
+interface SubmitResult {
+  status: string;
+  score?: number;
+  results?: TestResult[];
+  errorMessage?: string;
+  passedTests?: number;
+  totalTests?: number;
+}
+
 const LANGUAGES = [
-  { value: "python", label: "Python 3" },
-  { value: "cpp", label: "C++" },
-  { value: "c", label: "C" },
-  { value: "java", label: "Java" },
+  { value: "python", label: "Python 3", judge0Id: 71 },
+  { value: "cpp", label: "C++", judge0Id: 54 },
+  { value: "c", label: "C", judge0Id: 50 },
+  { value: "java", label: "Java", judge0Id: 62 },
 ];
 
 const DEFAULT_CODE: Record<string, string> = {
@@ -63,7 +79,8 @@ export default function ProblemPage({
   const [output, setOutput] = useState("");
   const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<any>(null);
+  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
+  const [judge0Connected, setJudge0Connected] = useState(false);
   
   // Demo user - in real app, this would come from authentication
   const [userId] = useState("demo-user-123");
@@ -83,6 +100,14 @@ export default function ProblemPage({
     async function fetchData() {
       setLoading(true);
       try {
+        // Check Judge0 connection
+        try {
+          const judge0Response = await fetch('http://localhost:3001/about');
+          setJudge0Connected(judge0Response.ok);
+        } catch {
+          setJudge0Connected(false);
+        }
+        
         // Fetch contest info
         const contestRes = await fetch(`/api/contests/${contestId}`);
         if (contestRes.ok) {
@@ -119,28 +144,100 @@ export default function ProblemPage({
 
     setRunning(true);
     setOutput("");
+    
     try {
-      console.log("Running code:", { code, language, input });
-      const res = await fetch("/api/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language, input }),
-      });
-      
-      console.log("Execute response status:", res.status);
-      
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Execute response data:", data);
-        setOutput(data.output || "No output");
-      } else {
-        const errorText = await res.text();
-        console.error("Execute error:", errorText);
-        setOutput("Error running code: " + errorText);
+      // Check Judge0 connection first
+      const connectionCheck = await fetch('http://localhost:3001/about');
+      if (!connectionCheck.ok) {
+        setOutput(`🚨 Judge0 Server Not Available
+
+To enable code execution:
+
+1. Open Terminal and run:
+   cd "/Users/deepakpandey/Coding /Projects/judge0"
+   node mock-judge0-server.js
+
+2. Wait for "Mock Judge0 API Server running on http://localhost:3001"
+
+3. Try running your code again!
+
+Your code will execute with real Judge0 integration! 🚀`);
+        setRunning(false);
+        return;
       }
+
+      // Get Judge0 language ID
+      const currentLang = LANGUAGES.find(lang => lang.value === language);
+      const languageId = currentLang?.judge0Id || 71; // Default to Python
+      
+      // Submit code to Judge0 with custom input
+      const submitResponse = await fetch('http://localhost:3001/submissions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_code: code,
+          language_id: languageId,
+          stdin: input || undefined
+        })
+      });
+
+      if (!submitResponse.ok) {
+        throw new Error('Failed to submit code to Judge0');
+      }
+
+      const { token } = await submitResponse.json();
+
+      // Get result from Judge0
+      const resultResponse = await fetch(`http://localhost:3001/submissions/${token}`);
+      
+      if (!resultResponse.ok) {
+        throw new Error('Failed to get execution result from Judge0');
+      }
+
+      const result = await resultResponse.json();
+      
+      // Format output for display
+      let formattedOutput = "";
+      
+      if (result.stdout) {
+        formattedOutput += result.stdout;
+      }
+      
+      if (result.stderr) {
+        formattedOutput += `\n❌ ERRORS:\n${result.stderr}`;
+      }
+      
+      if (result.compile_output) {
+        formattedOutput += `\n🔧 COMPILE OUTPUT:\n${result.compile_output}`;
+      }
+      
+      if (!result.stdout && !result.stderr && !result.compile_output) {
+        formattedOutput = "No output generated.";
+      }
+      
+      // Add execution status info  
+      const statusDesc = result.status?.description || 'Unknown';
+      const statusEmoji = result.status?.id === 3 ? '✅' : result.status?.id === 6 ? '❌' : '⚠️';
+      
+      if (result.status?.id !== 3) {
+        formattedOutput += `\n\n${statusEmoji} STATUS: ${statusDesc}`;
+      }
+      
+      setOutput(formattedOutput);
+      
     } catch (error) {
-      console.error("Network error during execution:", error);
-      setOutput("Network error during execution");
+      console.error("Execution error:", error);
+      setOutput(`❌ EXECUTION ERROR: ${error instanceof Error ? error.message : 'Unknown error'}
+
+🔧 Troubleshooting:
+1. Make sure Judge0 mock server is running:
+   cd "/Users/deepakpandey/Coding /Projects/judge0"
+   node mock-judge0-server.js
+
+2. Check if http://localhost:3001 is accessible
+3. Try refreshing the page`);
     }
     setRunning(false);
   };
@@ -161,54 +258,134 @@ export default function ProblemPage({
     setSubmitResult(null);
     
     try {
-      console.log("Starting submission:", { userId, contestId, questionId, language });
-      
-      // First ensure user exists (simplified approach)
-      const userRes = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: "demo_user",
-          email: "demo@example.com",
-          name: "Demo User"
-        }),
-      });
+      // Check Judge0 connection first
+      const connectionCheck = await fetch('http://localhost:3001/about');
+      if (!connectionCheck.ok) {
+        alert(`🚨 Judge0 Server Not Available
 
-      if (!userRes.ok) {
-        const userError = await userRes.text();
-        console.error("User creation failed:", userError);
+To enable code submission:
+
+1. Open Terminal and run:
+   cd "/Users/deepakpandey/Coding /Projects/judge0"
+   node mock-judge0-server.js
+
+2. Wait for server to start, then try submitting again!`);
+        setSubmitting(false);
+        return;
       }
 
-      // Submit the code
-      const res = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          userId,
-          contestId, 
-          questionId, 
-          code, 
-          language 
-        }),
-      });
+      console.log("Starting Judge0-powered submission:", { userId, contestId, questionId, language });
       
-      console.log("Submit response status:", res.status);
+      // Get Judge0 language ID
+      const currentLang = LANGUAGES.find(lang => lang.value === language);
+      const languageId = currentLang?.judge0Id || 71;
       
-      if (res.ok) {
-        const data = await res.json();
-        console.log("Submit response data:", data);
-        setSubmitResult(data);
-        alert(`Submission completed! Score: ${data.score}/${data.totalTests} tests passed`);
-      } else {
-        const error = await res.json();
-        console.error("Submission error:", error);
-        alert(`Submission failed: ${error.error || 'Unknown error'}`);
+      // Run test cases using Judge0
+      const testCases = question?.testCases || [];
+      const results: TestResult[] = [];
+      let passedTests = 0;
+      
+      // Test with sample input/output first
+      if (question?.sampleInput && question?.sampleOutput) {
+        const sampleResult = await runTestCase(code, languageId, question.sampleInput, question.sampleOutput);
+        results.push({ 
+          passed: sampleResult.passed, 
+          isHidden: false, 
+          expected: question.sampleOutput, 
+          output: sampleResult.output 
+        });
+        if (sampleResult.passed) passedTests++;
       }
+      
+      // Run actual test cases
+      for (const testCase of testCases) {
+        const result = await runTestCase(code, languageId, testCase.input, testCase.output);
+        results.push({
+          passed: result.passed,
+          isHidden: testCase.isHidden,
+          expected: testCase.isHidden ? undefined : testCase.output,
+          output: testCase.isHidden ? undefined : result.output
+        });
+        if (result.passed) passedTests++;
+      }
+      
+      const totalTests = results.length;
+      const score = Math.round((passedTests / totalTests) * (question?.points || 100));
+      const status = passedTests === totalTests ? 'ACCEPTED' : 'WRONG_ANSWER';
+      
+      const submitResult: SubmitResult = {
+        status,
+        score,
+        results,
+        passedTests,
+        totalTests
+      };
+      
+      setSubmitResult(submitResult);
+      alert(`Submission completed with Judge0! Score: ${passedTests}/${totalTests} tests passed`);
+      
     } catch (error) {
-      console.error("Network error during submission:", error);
-      alert("Network error during submission");
+      console.error("Submission error:", error);
+      setSubmitResult({
+        status: 'ERROR',
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        passedTests: 0,
+        totalTests: 0
+      });
+      alert(`Submission failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     setSubmitting(false);
+  };
+
+  // Helper function to run a single test case with Judge0
+  const runTestCase = async (code: string, languageId: number, input: string, expectedOutput: string) => {
+    try {
+      // Submit to Judge0
+      const submitResponse = await fetch('http://localhost:3001/submissions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          source_code: code,
+          language_id: languageId,
+          stdin: input
+        })
+      });
+
+      if (!submitResponse.ok) {
+        return { passed: false, output: 'Submission failed' };
+      }
+
+      const { token } = await submitResponse.json();
+
+      // Get result
+      const resultResponse = await fetch(`http://localhost:3001/submissions/${token}`);
+      
+      if (!resultResponse.ok) {
+        return { passed: false, output: 'Failed to get result' };
+      }
+
+      const result = await resultResponse.json();
+      
+      // Check if execution was successful
+      if (result.status?.id !== 3) {
+        return { 
+          passed: false, 
+          output: result.stderr || result.compile_output || 'Execution failed' 
+        };
+      }
+      
+      // Compare output (trim whitespace for comparison)
+      const actualOutput = (result.stdout || '').trim();
+      const expected = expectedOutput.trim();
+      const passed = actualOutput === expected;
+      
+      return { passed, output: actualOutput };
+      
+    } catch (error) {
+      return { passed: false, output: 'Test case execution error' };
+    }
   };
 
   if (loading) return (
@@ -279,7 +456,7 @@ export default function ProblemPage({
               </div>
               
               <div className="space-y-2">
-                {submitResult.results?.map((result: any, index: number) => (
+                {submitResult.results?.map((result: TestResult, index: number) => (
                   <div key={index} className={`p-2 rounded text-sm ${
                     result.passed ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'
                   }`}>
@@ -325,9 +502,13 @@ export default function ProblemPage({
                     handleRun();
                   }}
                   disabled={running}
-                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                  className={`px-4 py-2 rounded disabled:opacity-50 ${
+                    judge0Connected 
+                      ? 'bg-gray-600 text-white hover:bg-gray-700' 
+                      : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  }`}
                 >
-                  {running ? "Running..." : "Run"}
+                  {running ? "Running..." : judge0Connected ? "Run" : "Run (Start Judge0)"}
                 </button>
                 <button
                   onClick={() => {
@@ -335,10 +516,20 @@ export default function ProblemPage({
                     handleSubmit();
                   }}
                   disabled={submitting}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                  className={`px-4 py-2 rounded disabled:opacity-50 ${
+                    judge0Connected 
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-yellow-600 text-white hover:bg-yellow-700'
+                  }`}
                 >
-                  {submitting ? "Submitting..." : "Submit"}
+                  {submitting ? "Submitting..." : judge0Connected ? "Submit" : "Submit (Start Judge0)"}
                 </button>
+                <div className="flex items-center space-x-1">
+                  <div className={`w-2 h-2 rounded-full ${judge0Connected ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                  <span className="text-xs text-gray-500">
+                    {judge0Connected ? 'Judge0 Ready' : 'Judge0 Offline'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -354,7 +545,20 @@ export default function ProblemPage({
                 fontSize: 14,
                 minimap: { enabled: false },
                 scrollBeyondLastLine: false,
-                automaticLayout: true
+                automaticLayout: true,
+                cursorStyle: 'block',
+                cursorBlinking: 'solid',
+                renderLineHighlight: 'all',
+                selectOnLineNumbers: true,
+                mouseWheelZoom: true,
+                contextmenu: true,
+                cursorSmoothCaretAnimation: 'off',
+                cursorWidth: 3,
+                lineNumbers: 'on',
+                glyphMargin: true,
+                folding: true,
+                lineDecorationsWidth: 10,
+                lineNumbersMinChars: 3
               }}
             />
           </div>

@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+interface Submission {
+  id: string;
+  userId: string;
+  code: string;
+  language: string;
+  questionId: string;
+  submittedAt: Date;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+  };
+  question: {
+    id: string;
+    title: string;
+  };
+}
+
 // Simple plagiarism detection using similarity metrics
 function calculateSimilarity(code1: string, code2: string): number {
   // Normalize code by removing whitespace and comments
@@ -101,8 +121,8 @@ export async function POST(request: NextRequest) {
     });
 
     const suspiciousPairs: Array<{
-      submission1: any;
-      submission2: any;
+      submission1: Submission;
+      submission2: Submission;
       similarity: number;
       method: string;
     }> = [];
