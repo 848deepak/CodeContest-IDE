@@ -51,9 +51,16 @@ export default function ContestListPage() {
       try {
         const res = await fetch("/api/contests");
         const data = await res.json();
-        setContests(data);
+        // Ensure data is always an array
+        if (Array.isArray(data)) {
+          setContests(data);
+        } else {
+          console.error('API returned non-array data:', data);
+          setContests([]); // Set empty array as fallback
+        }
       } catch (error) {
         console.error('Error fetching contests:', error);
+        setContests([]); // Set empty array on error
       }
       setLoading(false);
     }
