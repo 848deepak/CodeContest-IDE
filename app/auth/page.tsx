@@ -3,10 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
 
 function AuthPageComponent() {
   const [mounted, setMounted] = useState(false);
