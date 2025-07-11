@@ -474,6 +474,47 @@ This should work automatically when deployed to Vercel! 🚀`);
         </div>
       </section>
       
+      {/* Support Section */}
+      <section className="py-16 px-6 md:px-10 lg:px-16 bg-gradient-to-b from-gray-900 to-black">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4 text-white">Support Student Innovation 🎓</h2>
+          <p className="text-lg text-gray-300 mb-6 leading-relaxed">
+            This platform was originally designed for <span className="text-blue-400 font-semibold">Codeunia.com</span> - 
+            a vision to create the ultimate coding contest platform. As students, we're passionate about building 
+            tools that help developers grow, but we need your support to cover backend infrastructure costs.
+          </p>
+          <div className="bg-gray-800/50 rounded-xl p-6 mb-6 border border-gray-700">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+              <span className="text-gray-300">💝 Help us keep this project alive</span>
+              <iframe 
+                src="https://github.com/sponsors/848deepak/button" 
+                title="Sponsor 848deepak" 
+                height="32" 
+                width="114" 
+                style={{border: 0, borderRadius: '6px'}}
+              ></iframe>
+            </div>
+            <p className="text-sm text-gray-400">
+              Every contribution helps us maintain servers, improve features, and keep this platform free for everyone.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700">
+              <div className="text-blue-400 font-semibold mb-2">🚀 What we've built</div>
+              <div className="text-gray-300">Production-ready IDE with real code execution, contests, and admin features</div>
+            </div>
+            <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700">
+              <div className="text-green-400 font-semibold mb-2">💡 Our vision</div>
+              <div className="text-gray-300">Empower students and developers with accessible, powerful coding tools</div>
+            </div>
+            <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700">
+              <div className="text-purple-400 font-semibold mb-2">🙏 Your impact</div>
+              <div className="text-gray-300">Help us scale from demo to production and serve the coding community</div>
+            </div>
+          </div>
+        </div>
+      </section>
+      
       {/* Footer */}
       <footer className="py-8 px-6 border-t border-gray-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center">
