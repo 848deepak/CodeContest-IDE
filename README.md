@@ -1,4 +1,4 @@
-# IDE Web Application
+# CodeContest-IDE
 
 A modern online IDE with contest management system built with Next.js and Supabase.
 
