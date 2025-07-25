@@ -1,83 +1,48 @@
 # CodeContest-IDE
 
-A modern online IDE with contest management system built with Next.js and Supabase.
+**CodeContest-IDE** is a powerful, production-ready online IDE and contest management platform proudly developed and maintained by **[Codeunia](https://codeunia.com)**.
 
-## Features
-
-- **Multi-language Code Editor**: Monaco Editor with syntax highlighting
-- **Contest System**: Create and manage coding contests
-- **User Management**: Authentication and user profiles
-- **Admin Dashboard**: Manage contests, users, and submissions
-- **Judge System**: Code execution and validation
-- **Database**: Full contest and user data management
-
-## Quick Deployment to Vercel
-
-### 1. Install Vercel CLI
-```bash
-npm install -g vercel
-```
-
-### 2. Build and Deploy
-```bash
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Deploy to Vercel
-vercel --prod
-```
-
-### 3. Set Environment Variables in Vercel Dashboard
-
-```env
-DATABASE_URL=your_supabase_connection_string
-NEXTAUTH_SECRET=your_random_secret_key
-NEXTAUTH_URL=https://your-app.vercel.app
-```
-
-### 4. Database Setup
-```bash
-# Push database schema
-npx prisma db push
-
-# Seed initial data
-npx prisma db seed
-```
-
-## Local Development
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Open http://localhost:3000
-```
-
-## Environment Variables
-
-Create a `.env.local` file:
-
-```env
-DATABASE_URL="your_supabase_connection_string"
-NEXTAUTH_SECRET="your_secret_key"
-NEXTAUTH_URL="http://localhost:3000"
-```
-
-## Tech Stack
-
-- **Frontend**: Next.js 15, React, Tailwind CSS
-- **Editor**: Monaco Editor
-- **Database**: Supabase (PostgreSQL)
-- **ORM**: Prisma
-- **Authentication**: NextAuth.js
-- **Deployment**: Vercel
+Designed for scalability, performance, and real-time coding competitions, it powers internal events, open challenges, and learning experiences within the Codeunia ecosystem.
 
 ---
 
-Ready to deploy! Just run `vercel --prod` and your IDE will be live.
+## 🚀 Features
+
+- 🔤 **Multi-language Code Editor**  
+  Built using Monaco Editor with syntax highlighting and intelligent support for multiple languages.
+
+- 🏁 **Contest Management System**  
+  Create, schedule, and manage coding contests with live leaderboards and submission handling.
+
+- 👤 **User Authentication & Profiles**  
+  Secure login via Supabase (email, Google, GitHub), with user profiles and participation history.
+
+- 🛠️ **Admin Dashboard**  
+  Full dashboard to manage users, problems, contests, and judge submissions.
+
+- 🧠 **Judge System**  
+  Secure server-side code execution and auto-evaluation of user submissions.
+
+- 🗃️ **Persistent Database**  
+  PostgreSQL (via Supabase) for contest data, user accounts, problems, and submissions.
+
+---
+
+## 🧩 Tech Stack
+
+- **Frontend**: Next.js 15, React, Tailwind CSS  
+- **Editor**: Monaco Editor  
+- **Database**: Supabase (PostgreSQL)  
+- **ORM**: Prisma  
+- **Authentication**: NextAuth.js  
+- **Hosting**: Vercel
+
+---
+## 🏷️ License & Ownership
+
+This project is an official product of **[CodeUnia](https://codeunia.com)**.  
+All rights reserved. © 2025 CodeUnia
+
+Feel free to contribute, fork, and share — but all commercial usage and official branding must be aligned with Codeunia’s license and policies.
+
+---
